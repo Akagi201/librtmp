@@ -1046,8 +1046,11 @@ SocksNegotiate(RTMP *r) {
     }
 }
 
-int
-RTMP_ConnectStream(RTMP *r, int seekTime) {
+/*
+ * @brief After server received createStream, send _result message to notify the status
+ * of the client stream
+ */
+int RTMP_ConnectStream(RTMP *r, int seekTime) {
     RTMPPacket packet = {0};
 
     /* seekTime was already set by SetupStream / SetupURL.
@@ -1485,8 +1488,10 @@ SAVC(secureTokenResponse);
 SAVC(type);
 SAVC(nonprivate);
 
-static int
-SendConnectPacket(RTMP *r, RTMPPacket *cp) {
+/*
+ * @brief client send connect message to server
+ */
+static int SendConnectPacket(RTMP *r, RTMPPacket *cp) {
     RTMPPacket packet;
     char pbuf[4096], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1620,8 +1625,10 @@ SendBGHasStream(RTMP *r, double dId, AVal *playpath)
 
 SAVC(createStream);
 
-int
-RTMP_SendCreateStream(RTMP *r) {
+/*
+ * @brief client send createStream message to server
+ */
+int RTMP_SendCreateStream(RTMP *r) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1923,8 +1930,11 @@ RTMP_SendSeek(RTMP *r, int iTime) {
     return RTMP_SendPacket(r, &packet, TRUE);
 }
 
-int
-RTMP_SendServerBW(RTMP *r) {
+/*
+ * @brief After server received connect message, send Window Acknowledgement Size message to client
+ * connect to the application in the connect message.
+ */
+int RTMP_SendServerBW(RTMP *r) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
 
@@ -1942,8 +1952,10 @@ RTMP_SendServerBW(RTMP *r) {
     return RTMP_SendPacket(r, &packet, FALSE);
 }
 
-int
-RTMP_SendClientBW(RTMP *r) {
+/*
+ * @brief After client handled the BW message, send Window Acknowledgement Size message to server.
+ */
+int RTMP_SendClientBW(RTMP *r) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
 
@@ -2013,8 +2025,11 @@ SendCheckBW(RTMP *r) {
 
 SAVC(_result);
 
-static int
-SendCheckBWResult(RTMP *r, double txn) {
+/*
+ * @brief server send user control message Stream Begin to client, _result in the message to notify the
+ * status of the connection to client
+ */
+static int SendCheckBWResult(RTMP *r, double txn) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -2067,8 +2082,10 @@ SendPong(RTMP *r, double txn) {
 
 SAVC(play);
 
-static int
-SendPlay(RTMP *r) {
+/*
+ * @brief client send play message to server
+ */
+static int SendPlay(RTMP *r) {
     RTMPPacket packet;
     char pbuf[1024], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -3136,8 +3153,10 @@ HandleMetadata(RTMP *r, char *body, unsigned int len) {
     return ret;
 }
 
-static void
-HandleChangeChunkSize(RTMP *r, const RTMPPacket *packet) {
+/*
+ * @brief After received play command, server send ChunkSize message
+ */
+static void HandleChangeChunkSize(RTMP *r, const RTMPPacket *packet) {
     if (packet->m_nBodySize >= 4) {
         r->m_inChunkSize = AMF_DecodeInt32(packet->m_body);
         RTMP_Log(RTMP_LOGDEBUG, "%s, received: chunk size change to %d", __FUNCTION__,

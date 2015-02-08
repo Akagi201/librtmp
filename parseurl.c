@@ -30,6 +30,9 @@
 #include "rtmp_sys.h"
 #include "log.h"
 
+/*
+ * @brief parse rtmp url, get protocol name, hostname, port, play path, application name
+ */
 int RTMP_ParseURL(const char *url, int *protocol, AVal *host, unsigned int *port,
         AVal *playpath, AVal *app) {
     char *p, *end, *col, *ques, *slash;

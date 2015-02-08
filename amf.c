@@ -36,44 +36,51 @@ static const AMFObjectProperty AMFProp_Invalid = {{0, 0}, AMF_INVALID};
 static const AVal AV_empty = {0, 0};
 
 /* Data is Big-Endian */
-unsigned short
-AMF_DecodeInt16(const char *data) {
+unsigned short AMF_DecodeInt16(const char *data) {
     unsigned char *c = (unsigned char *) data;
     unsigned short val;
     val = (c[0] << 8) | c[1];
     return val;
 }
 
-unsigned int
-AMF_DecodeInt24(const char *data) {
+unsigned int AMF_DecodeInt24(const char *data) {
     unsigned char *c = (unsigned char *) data;
     unsigned int val;
     val = (c[0] << 16) | (c[1] << 8) | c[2];
     return val;
 }
 
-unsigned int
-AMF_DecodeInt32(const char *data) {
+unsigned int AMF_DecodeInt32(const char *data) {
     unsigned char *c = (unsigned char *) data;
     unsigned int val;
     val = (c[0] << 24) | (c[1] << 16) | (c[2] << 8) | c[3];
     return val;
 }
 
-void
-AMF_DecodeString(const char *data, AVal *bv) {
+/*
+ * @brief parse a string from data, save into bv
+ * data format: | string len(2 bytes) | string data |
+ * bv->av_len: string len, 2 bytes
+ * bv->av_val: string data
+ */
+void AMF_DecodeString(const char *data, AVal *bv) {
     bv->av_len = AMF_DecodeInt16(data);
     bv->av_val = (bv->av_len > 0) ? (char *) data + 2 : NULL;
 }
 
-void
-AMF_DecodeLongString(const char *data, AVal *bv) {
+/*
+ * @brief long string parse
+ * data format: | string len(4 bytes) | string data |
+ */
+void AMF_DecodeLongString(const char *data, AVal *bv) {
     bv->av_len = AMF_DecodeInt32(data);
     bv->av_val = (bv->av_len > 0) ? (char *) data + 4 : NULL;
 }
 
-double
-AMF_DecodeNumber(const char *data) {
+/*
+ * @brief parse data 8 bytes to double
+ */
+double AMF_DecodeNumber(const char *data) {
     double dVal;
 #if __FLOAT_WORD_ORDER == __BYTE_ORDER
 #if __BYTE_ORDER == __BIG_ENDIAN
@@ -121,13 +128,22 @@ AMF_DecodeNumber(const char *data) {
     return dVal;
 }
 
-int
-AMF_DecodeBoolean(const char *data) {
+/*
+ * @brief parse data 1 bytes to boolean
+ */
+int AMF_DecodeBoolean(const char *data) {
     return *data != 0;
 }
 
-char *
-AMF_EncodeInt16(char *output, char *outend, short nVal) {
+/*
+ * @brief parse short int value into 2 bytes to output
+ * @param[out] output: output buffer to save encode value
+ * @param[in] outend: buf end address
+ * @param[in] nVal: short int value to be encoded
+ *
+ * @return After encoded successfully, output move 2 byte, or return null
+ */
+char * AMF_EncodeInt16(char *output, char *outend, short nVal) {
     if (output + 2 > outend)
         return NULL;
 
@@ -136,8 +152,10 @@ AMF_EncodeInt16(char *output, char *outend, short nVal) {
     return output + 2;
 }
 
-char *
-AMF_EncodeInt24(char *output, char *outend, int nVal) {
+/*
+ * @brief parse int value into 3 bytes to output
+ */
+char *AMF_EncodeInt24(char *output, char *outend, int nVal) {
     if (output + 3 > outend)
         return NULL;
 
@@ -147,8 +165,10 @@ AMF_EncodeInt24(char *output, char *outend, int nVal) {
     return output + 3;
 }
 
-char *
-AMF_EncodeInt32(char *output, char *outend, int nVal) {
+/*
+ * @brief parse int value into 4 bytes to output
+ */
+char *AMF_EncodeInt32(char *output, char *outend, int nVal) {
     if (output + 4 > outend)
         return NULL;
 
@@ -159,8 +179,11 @@ AMF_EncodeInt32(char *output, char *outend, int nVal) {
     return output + 4;
 }
 
-char *
-AMF_EncodeString(char *output, char *outend, const AVal *bv) {
+/*
+ * @brief encode string in bv to output
+ * encode format: | type(1 byte) | length (2 or 4 bytes) | string data |
+ */
+char *AMF_EncodeString(char *output, char *outend, const AVal *bv) {
     if ((bv->av_len < 65536 && output + 1 + 2 + bv->av_len > outend) ||
             output + 1 + 4 + bv->av_len > outend)
         return NULL;
@@ -181,8 +204,11 @@ AMF_EncodeString(char *output, char *outend, const AVal *bv) {
     return output;
 }
 
-char *
-AMF_EncodeNumber(char *output, char *outend, double dVal) {
+/*
+ * @brief encode double to output
+ * encode format: | type(1 byte) | double value (8 bytes)|
+ */
+char *AMF_EncodeNumber(char *output, char *outend, double dVal) {
     if (output + 1 + 8 > outend)
         return NULL;
 
@@ -241,8 +267,11 @@ AMF_EncodeNumber(char *output, char *outend, double dVal) {
     return output + 8;
 }
 
-char *
-AMF_EncodeBoolean(char *output, char *outend, int bVal) {
+/*
+ * @brief encode boolean to output
+ * encode format: | type(1 byte) | 0 or 1 (1 byte) |
+ */
+char *AMF_EncodeBoolean(char *output, char *outend, int bVal) {
     if (output + 2 > outend)
         return NULL;
 
@@ -253,8 +282,11 @@ AMF_EncodeBoolean(char *output, char *outend, int bVal) {
     return output;
 }
 
-char *
-AMF_EncodeNamedString(char *output, char *outend, const AVal *strName, const AVal *strValue) {
+/*
+ * @brief encode(strName, strValue) to output
+ * encode format: | name length(2 byte) | name data | type (1 byte) |  value length(2 or 4 bytes) |  value string data  |
+ */
+char *AMF_EncodeNamedString(char *output, char *outend, const AVal *strName, const AVal *strValue) {
     if (output + 2 + strName->av_len > outend)
         return NULL;
     output = AMF_EncodeInt16(output, outend, strName->av_len);
@@ -265,8 +297,11 @@ AMF_EncodeNamedString(char *output, char *outend, const AVal *strName, const AVa
     return AMF_EncodeString(output, outend, strValue);
 }
 
-char *
-AMF_EncodeNamedNumber(char *output, char *outend, const AVal *strName, double dVal) {
+/*
+ * @brief encode(strName, dVal) to output
+ * encode format: |name length(2 byte)| name data | type (1 byte) | double value (8 byte) |
+ */
+char *AMF_EncodeNamedNumber(char *output, char *outend, const AVal *strName, double dVal) {
     if (output + 2 + strName->av_len > outend)
         return NULL;
     output = AMF_EncodeInt16(output, outend, strName->av_len);
@@ -277,8 +312,11 @@ AMF_EncodeNamedNumber(char *output, char *outend, const AVal *strName, double dV
     return AMF_EncodeNumber(output, outend, dVal);
 }
 
-char *
-AMF_EncodeNamedBoolean(char *output, char *outend, const AVal *strName, int bVal) {
+/*
+ * @brief encode(strName, bVal) to output
+ * encode format: |name length(2 byte)| name data | type (1 byte) | double value (1 byte) |
+ */
+char *AMF_EncodeNamedBoolean(char *output, char *outend, const AVal *strName, int bVal) {
     if (output + 2 + strName->av_len > outend)
         return NULL;
     output = AMF_EncodeInt16(output, outend, strName->av_len);
@@ -289,48 +327,66 @@ AMF_EncodeNamedBoolean(char *output, char *outend, const AVal *strName, int bVal
     return AMF_EncodeBoolean(output, outend, bVal);
 }
 
-void
-AMFProp_GetName(AMFObjectProperty *prop, AVal *name) {
+/*
+ * @brief get amf object attribute name
+ */
+void AMFProp_GetName(AMFObjectProperty *prop, AVal *name) {
     *name = prop->p_name;
 }
 
-void
-AMFProp_SetName(AMFObjectProperty *prop, AVal *name) {
+/*
+ * @brief set amf object attribute name
+ */
+void AMFProp_SetName(AMFObjectProperty *prop, AVal *name) {
     prop->p_name = *name;
 }
 
-AMFDataType
-AMFProp_GetType(AMFObjectProperty *prop) {
+/*
+ * @brief get amf object attribute data type
+ */
+AMFDataType AMFProp_GetType(AMFObjectProperty *prop) {
     return prop->p_type;
 }
 
-double
-AMFProp_GetNumber(AMFObjectProperty *prop) {
+/*
+ * @brief get amf object double value
+ */
+double AMFProp_GetNumber(AMFObjectProperty *prop) {
     return prop->p_vu.p_number;
 }
 
-int
-AMFProp_GetBoolean(AMFObjectProperty *prop) {
+/*
+ * @brief get amf object attribute boolean value
+ */
+int AMFProp_GetBoolean(AMFObjectProperty *prop) {
     return prop->p_vu.p_number != 0;
 }
 
-void
-AMFProp_GetString(AMFObjectProperty *prop, AVal *str) {
+/*
+ * @brief get amf object attribute AVal value, string and string length
+ */
+void AMFProp_GetString(AMFObjectProperty *prop, AVal *str) {
     *str = prop->p_vu.p_aval;
 }
 
-void
-AMFProp_GetObject(AMFObjectProperty *prop, AMFObject *obj) {
+/*
+ * @brief get amf object attribute's belongs object
+ */
+void AMFProp_GetObject(AMFObjectProperty *prop, AMFObject *obj) {
     *obj = prop->p_vu.p_object;
 }
 
-int
-AMFProp_IsValid(AMFObjectProperty *prop) {
+/*
+ * @brief judge whether amf object attribute is valid
+ */
+int AMFProp_IsValid(AMFObjectProperty *prop) {
     return prop->p_type != AMF_INVALID;
 }
 
-char *
-AMFProp_Encode(AMFObjectProperty *prop, char *pBuffer, char *pBufEnd) {
+/*
+ * @brief encode an amf object attribute, include attribute name and value
+ */
+char *AMFProp_Encode(AMFObjectProperty *prop, char *pBuffer, char *pBufEnd) {
     if (prop->p_type == AMF_INVALID)
         return NULL;
 
@@ -386,8 +442,10 @@ AMFProp_Encode(AMFObjectProperty *prop, char *pBuffer, char *pBufEnd) {
 #define AMF3_INTEGER_MAX    268435455
 #define AMF3_INTEGER_MIN    -268435456
 
-int
-AMF3ReadInteger(const char *data, int32_t *valp) {
+/*
+ * @brief AMF3 parse an integer
+ */
+int AMF3ReadInteger(const char *data, int32_t *valp) {
     int i = 0;
     int32_t val = 0;
 
@@ -420,8 +478,10 @@ AMF3ReadInteger(const char *data, int32_t *valp) {
     return i > 2 ? 4 : i + 1;
 }
 
-int
-AMF3ReadString(const char *data, AVal *str) {
+/*
+ * @brief AMF3 parse string
+ */
+int AMF3ReadString(const char *data, AVal *str) {
     int32_t ref = 0;
     int len;
     assert(str != 0);
@@ -447,8 +507,10 @@ AMF3ReadString(const char *data, AVal *str) {
     return len;
 }
 
-int
-AMF3Prop_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
+/*
+ * @brief decode an AMF3 attribute, include attribute name, type and value
+ */
+int AMF3Prop_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
         int bDecodeName) {
     int nOriginalSize = nSize;
     AMF3DataType type;
@@ -554,8 +616,10 @@ AMF3Prop_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
     return nOriginalSize - nSize;
 }
 
-int
-AMFProp_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
+/*
+ * @brief decode an AMF attribute, include attribute name , length, type and value
+ */
+int AMFProp_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
         int bDecodeName) {
     int nOriginalSize = nSize;
     int nRes;
@@ -715,8 +779,10 @@ AMFProp_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
     return nOriginalSize - nSize;
 }
 
-void
-AMFProp_Dump(AMFObjectProperty *prop) {
+/*
+ * @brief output AMF attribute name and value
+ */
+void AMFProp_Dump(AMFObjectProperty *prop) {
     char strRes[256];
     char str[256];
     AVal name;
@@ -782,8 +848,10 @@ AMFProp_Dump(AMFObjectProperty *prop) {
     RTMP_Log(RTMP_LOGDEBUG, "Property: <%s%s>", strRes, str);
 }
 
-void
-AMFProp_Reset(AMFObjectProperty *prop) {
+/*
+ * @brief reset AMF attribute
+ */
+void AMFProp_Reset(AMFObjectProperty *prop) {
     if (prop->p_type == AMF_OBJECT || prop->p_type == AMF_ECMA_ARRAY ||
             prop->p_type == AMF_STRICT_ARRAY)
         AMF_Reset(&prop->p_vu.p_object);
@@ -796,8 +864,10 @@ AMFProp_Reset(AMFObjectProperty *prop) {
 
 /* AMFObject */
 
-char *
-AMF_Encode(AMFObject *obj, char *pBuffer, char *pBufEnd) {
+/*
+ * @brief encode AMF object
+ */
+char *AMF_Encode(AMFObject *obj, char *pBuffer, char *pBufEnd) {
     int i;
 
     if (pBuffer + 4 >= pBufEnd)
@@ -825,8 +895,10 @@ AMF_Encode(AMFObject *obj, char *pBuffer, char *pBufEnd) {
     return pBuffer;
 }
 
-char *
-AMF_EncodeEcmaArray(AMFObject *obj, char *pBuffer, char *pBufEnd) {
+/*
+ * @brief
+ */
+char *AMF_EncodeEcmaArray(AMFObject *obj, char *pBuffer, char *pBufEnd) {
     int i;
 
     if (pBuffer + 4 >= pBufEnd)
@@ -856,8 +928,7 @@ AMF_EncodeEcmaArray(AMFObject *obj, char *pBuffer, char *pBufEnd) {
     return pBuffer;
 }
 
-char *
-AMF_EncodeArray(AMFObject *obj, char *pBuffer, char *pBufEnd) {
+char *AMF_EncodeArray(AMFObject *obj, char *pBuffer, char *pBufEnd) {
     int i;
 
     if (pBuffer + 4 >= pBufEnd)
@@ -887,8 +958,10 @@ AMF_EncodeArray(AMFObject *obj, char *pBuffer, char *pBufEnd) {
     return pBuffer;
 }
 
-int
-AMF_DecodeArray(AMFObject *obj, const char *pBuffer, int nSize,
+/*
+ * @brief decode an attribute array, output to AMR obj
+ */
+int AMF_DecodeArray(AMFObject *obj, const char *pBuffer, int nSize,
         int nArrayLen, int bDecodeName) {
     int nOriginalSize = nSize;
     int bError = FALSE;
@@ -915,8 +988,10 @@ AMF_DecodeArray(AMFObject *obj, const char *pBuffer, int nSize,
     return nOriginalSize - nSize;
 }
 
-int
-AMF3_Decode(AMFObject *obj, const char *pBuffer, int nSize, int bAMFData) {
+/*
+ * @brief decode an AMF3 data
+ */
+int AMF3_Decode(AMFObject *obj, const char *pBuffer, int nSize, int bAMFData) {
     int nOriginalSize = nSize;
     int32_t ref;
     int len;
@@ -1040,8 +1115,10 @@ AMF3_Decode(AMFObject *obj, const char *pBuffer, int nSize, int bAMFData) {
     return nOriginalSize - nSize;
 }
 
-int
-AMF_Decode(AMFObject *obj, const char *pBuffer, int nSize, int bDecodeName) {
+/*
+ * @brief decode an AMF object
+ */
+int AMF_Decode(AMFObject *obj, const char *pBuffer, int nSize, int bDecodeName) {
     int nOriginalSize = nSize;
     int bError = FALSE;        /* if there is an error while decoding - try to at least find the end mark AMF_OBJECT_END */
 

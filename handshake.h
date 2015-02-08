@@ -687,8 +687,10 @@ static void rtmpe9_sig(uint8_t *in, uint8_t *out, int keyid) {
     out[7] = (d[1] >> 24) & 0xff;
 }
 
-static int
-HandShake(RTMP *r, int FP9HandShake) {
+/*
+ * @brief client handshake
+ */
+static int HandShake(RTMP *r, int FP9HandShake) {
     int i, offalg = 0;
     int dhposClient = 0;
     int digestPosClient = 0;
@@ -1032,8 +1034,10 @@ HandShake(RTMP *r, int FP9HandShake) {
     return TRUE;
 }
 
-static int
-SHandShake(RTMP * r) {
+/*
+ * @brief server handshake
+ */
+static int SHandShake(RTMP * r) {
     int i, offalg = 0;
     int dhposServer = 0;
     int digestPosServer = 0;
