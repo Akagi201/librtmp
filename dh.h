@@ -164,28 +164,29 @@ static int MDH_compute_key(uint8_t *secret, size_t len, MP_t pub, MDH *dh)
 }
 
 #else /* USE_OPENSSL */
+
 #include <openssl/bn.h>
 #include <openssl/dh.h>
 
-typedef BIGNUM * MP_t;
-#define MP_new(m)	m = BN_new()
-#define MP_set_w(mpi, w)	BN_set_word(mpi, w)
-#define MP_cmp(u, v)	BN_cmp(u, v)
-#define MP_set(u, v)	BN_copy(u, v)
-#define MP_sub_w(mpi, w)	BN_sub_word(mpi, w)
-#define MP_cmp_1(mpi)	BN_cmp(mpi, BN_value_one())
-#define MP_modexp(r, y, q, p)	do {BN_CTX *ctx = BN_CTX_new(); BN_mod_exp(r, y, q, p, ctx); BN_CTX_free(ctx);} while(0)
-#define MP_free(mpi)	BN_free(mpi)
-#define MP_gethex(u, hex, res)	res = BN_hex2bn(&u, hex)
-#define MP_bytes(u)	BN_num_bytes(u)
-#define MP_setbin(u,buf,len)	BN_bn2bin(u,buf)
-#define MP_getbin(u,buf,len)	u = BN_bin2bn(buf,len,0)
+typedef BIGNUM *MP_t;
+#define MP_new(m)    m = BN_new()
+#define MP_set_w(mpi, w)    BN_set_word(mpi, w)
+#define MP_cmp(u, v)    BN_cmp(u, v)
+#define MP_set(u, v)    BN_copy(u, v)
+#define MP_sub_w(mpi, w)    BN_sub_word(mpi, w)
+#define MP_cmp_1(mpi)    BN_cmp(mpi, BN_value_one())
+#define MP_modexp(r, y, q, p)    do {BN_CTX *ctx = BN_CTX_new(); BN_mod_exp(r, y, q, p, ctx); BN_CTX_free(ctx);} while(0)
+#define MP_free(mpi)    BN_free(mpi)
+#define MP_gethex(u, hex, res)    res = BN_hex2bn(&u, hex)
+#define MP_bytes(u)    BN_num_bytes(u)
+#define MP_setbin(u, buf, len)    BN_bn2bin(u,buf)
+#define MP_getbin(u, buf, len)    u = BN_bin2bn(buf,len,0)
 
-#define MDH	DH
-#define MDH_new()	DH_new()
-#define MDH_free(dh)	DH_free(dh)
-#define MDH_generate_key(dh)	DH_generate_key(dh)
-#define MDH_compute_key(secret, seclen, pub, dh)	DH_compute_key(secret, pub, dh)
+#define MDH    DH
+#define MDH_new()    DH_new()
+#define MDH_free(dh)    DH_free(dh)
+#define MDH_generate_key(dh)    DH_generate_key(dh)
+#define MDH_compute_key(secret, seclen, pub, dh)    DH_compute_key(secret, pub, dh)
 
 #endif
 
@@ -194,116 +195,106 @@ typedef BIGNUM * MP_t;
 
 /* RFC 2631, Section 2.1.5, http://www.ietf.org/rfc/rfc2631.txt */
 static int
-isValidPublicKey(MP_t y, MP_t p, MP_t q)
-{
-  int ret = TRUE;
-  MP_t bn;
-  assert(y);
+isValidPublicKey(MP_t y, MP_t p, MP_t q) {
+    int ret = TRUE;
+    MP_t bn;
+    assert(y);
 
-  MP_new(bn);
-  assert(bn);
+    MP_new(bn);
+    assert(bn);
 
-  /* y must lie in [2,p-1] */
-  MP_set_w(bn, 1);
-  if (MP_cmp(y, bn) < 0)
-    {
-      RTMP_Log(RTMP_LOGERROR, "DH public key must be at least 2");
-      ret = FALSE;
-      goto failed;
+    /* y must lie in [2,p-1] */
+    MP_set_w(bn, 1);
+    if (MP_cmp(y, bn) < 0) {
+        RTMP_Log(RTMP_LOGERROR, "DH public key must be at least 2");
+        ret = FALSE;
+        goto failed;
     }
 
-  /* bn = p-2 */
-  MP_set(bn, p);
-  MP_sub_w(bn, 1);
-  if (MP_cmp(y, bn) > 0)
-    {
-      RTMP_Log(RTMP_LOGERROR, "DH public key must be at most p-2");
-      ret = FALSE;
-      goto failed;
+    /* bn = p-2 */
+    MP_set(bn, p);
+    MP_sub_w(bn, 1);
+    if (MP_cmp(y, bn) > 0) {
+        RTMP_Log(RTMP_LOGERROR, "DH public key must be at most p-2");
+        ret = FALSE;
+        goto failed;
     }
 
-  /* Verify with Sophie-Germain prime
-   *
-   * This is a nice test to make sure the public key position is calculated
-   * correctly. This test will fail in about 50% of the cases if applied to
-   * random data.
-   */
-  if (q)
-    {
-      /* y must fulfill y^q mod p = 1 */
-      MP_modexp(bn, y, q, p);
+    /* Verify with Sophie-Germain prime
+     *
+     * This is a nice test to make sure the public key position is calculated
+     * correctly. This test will fail in about 50% of the cases if applied to
+     * random data.
+     */
+    if (q) {
+        /* y must fulfill y^q mod p = 1 */
+        MP_modexp(bn, y, q, p);
 
-      if (MP_cmp_1(bn) != 0)
-	{
-	  RTMP_Log(RTMP_LOGWARNING, "DH public key does not fulfill y^q mod p = 1");
-	}
+        if (MP_cmp_1(bn) != 0) {
+            RTMP_Log(RTMP_LOGWARNING, "DH public key does not fulfill y^q mod p = 1");
+        }
     }
 
-failed:
-  MP_free(bn);
-  return ret;
+    failed:
+    MP_free(bn);
+    return ret;
 }
 
 static MDH *
-DHInit(int nKeyBits)
-{
-  size_t res;
-  MDH *dh = MDH_new();
+DHInit(int nKeyBits) {
+    size_t res;
+    MDH *dh = MDH_new();
 
-  if (!dh)
-    goto failed;
+    if (!dh)
+        goto failed;
 
-  MP_new(dh->g);
+    MP_new(dh->g);
 
-  if (!dh->g)
-    goto failed;
+    if (!dh->g)
+        goto failed;
 
-  MP_gethex(dh->p, P1024, res);	/* prime P1024, see dhgroups.h */
-  if (!res)
-    {
-      goto failed;
+    MP_gethex(dh->p, P1024, res);    /* prime P1024, see dhgroups.h */
+    if (!res) {
+        goto failed;
     }
 
-  MP_set_w(dh->g, 2);	/* base 2 */
+    MP_set_w(dh->g, 2);    /* base 2 */
 
-  dh->length = nKeyBits;
-  return dh;
+    dh->length = nKeyBits;
+    return dh;
 
-failed:
-  if (dh)
-    MDH_free(dh);
+    failed:
+    if (dh)
+        MDH_free(dh);
 
-  return 0;
+    return 0;
 }
 
 static int
-DHGenerateKey(MDH *dh)
-{
-  size_t res = 0;
-  if (!dh)
-    return 0;
+DHGenerateKey(MDH *dh) {
+    size_t res = 0;
+    if (!dh)
+        return 0;
 
-  while (!res)
-    {
-      MP_t q1 = NULL;
+    while (!res) {
+        MP_t q1 = NULL;
 
-      if (!MDH_generate_key(dh))
-	return 0;
+        if (!MDH_generate_key(dh))
+            return 0;
 
-      MP_gethex(q1, Q1024, res);
-      assert(res);
+        MP_gethex(q1, Q1024, res);
+        assert(res);
 
-      res = isValidPublicKey(dh->pub_key, dh->p, q1);
-      if (!res)
-	{
-	  MP_free(dh->pub_key);
-	  MP_free(dh->priv_key);
-	  dh->pub_key = dh->priv_key = 0;
-	}
+        res = isValidPublicKey(dh->pub_key, dh->p, q1);
+        if (!res) {
+            MP_free(dh->pub_key);
+            MP_free(dh->priv_key);
+            dh->pub_key = dh->priv_key = 0;
+        }
 
-      MP_free(q1);
+        MP_free(q1);
     }
-  return 1;
+    return 1;
 }
 
 /* fill pubkey with the public key in BIG ENDIAN order
@@ -311,22 +302,21 @@ DHGenerateKey(MDH *dh)
  */
 
 static int
-DHGetPublicKey(MDH *dh, uint8_t *pubkey, size_t nPubkeyLen)
-{
-  int len;
-  if (!dh || !dh->pub_key)
-    return 0;
+DHGetPublicKey(MDH *dh, uint8_t *pubkey, size_t nPubkeyLen) {
+    int len;
+    if (!dh || !dh->pub_key)
+        return 0;
 
-  len = MP_bytes(dh->pub_key);
-  if (len <= 0 || len > (int) nPubkeyLen)
-    return 0;
+    len = MP_bytes(dh->pub_key);
+    if (len <= 0 || len > (int) nPubkeyLen)
+        return 0;
 
-  memset(pubkey, 0, nPubkeyLen);
-  MP_setbin(dh->pub_key, pubkey + (nPubkeyLen - len), len);
-  return 1;
+    memset(pubkey, 0, nPubkeyLen);
+    MP_setbin(dh->pub_key, pubkey + (nPubkeyLen - len), len);
+    return 1;
 }
 
-#if 0	/* unused */
+#if 0    /* unused */
 static int
 DHGetPrivateKey(MDH *dh, uint8_t *privkey, size_t nPrivkeyLen)
 {
@@ -348,29 +338,28 @@ DHGetPrivateKey(MDH *dh, uint8_t *privkey, size_t nPrivkeyLen)
  */
 static int
 DHComputeSharedSecretKey(MDH *dh, uint8_t *pubkey, size_t nPubkeyLen,
-			 uint8_t *secret)
-{
-  MP_t q1 = NULL, pubkeyBn = NULL;
-  size_t len;
-  int res;
+        uint8_t *secret) {
+    MP_t q1 = NULL, pubkeyBn = NULL;
+    size_t len;
+    int res;
 
-  if (!dh || !secret || nPubkeyLen >= INT_MAX)
-    return -1;
+    if (!dh || !secret || nPubkeyLen >= INT_MAX)
+        return -1;
 
-  MP_getbin(pubkeyBn, pubkey, nPubkeyLen);
-  if (!pubkeyBn)
-    return -1;
+    MP_getbin(pubkeyBn, pubkey, nPubkeyLen);
+    if (!pubkeyBn)
+        return -1;
 
-  MP_gethex(q1, Q1024, len);
-  assert(len);
+    MP_gethex(q1, Q1024, len);
+    assert(len);
 
-  if (isValidPublicKey(pubkeyBn, dh->p, q1))
-    res = MDH_compute_key(secret, nPubkeyLen, pubkeyBn, dh);
-  else
-    res = -1;
+    if (isValidPublicKey(pubkeyBn, dh->p, q1))
+        res = MDH_compute_key(secret, nPubkeyLen, pubkeyBn, dh);
+    else
+        res = -1;
 
-  MP_free(q1);
-  MP_free(pubkeyBn);
+    MP_free(q1);
+    MP_free(pubkeyBn);
 
-  return res;
+    return res;
 }

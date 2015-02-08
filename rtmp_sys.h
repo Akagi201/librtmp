@@ -42,6 +42,7 @@
 #define msleep(n)	Sleep(n)
 #define SET_RCVTIMEO(tv,s)	int tv = s*1000
 #else /* !_WIN32 */
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/times.h>
@@ -50,12 +51,13 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
-#define GetSockError()	errno
-#define SetSockError(e)	errno = e
+
+#define GetSockError()    errno
+#define SetSockError(e)    errno = e
 #undef closesocket
-#define closesocket(s)	close(s)
-#define msleep(n)	usleep(n*1000)
-#define SET_RCVTIMEO(tv,s)	struct timeval tv = {s,0}
+#define closesocket(s)    close(s)
+#define msleep(n)    usleep(n*1000)
+#define SET_RCVTIMEO(tv, s)    struct timeval tv = {s,0}
 #endif
 
 #include "rtmp.h"
@@ -124,16 +126,16 @@ typedef struct tls_ctx {
 #define TLS_close(s)	gnutls_deinit(s)
 
 #else	/* USE_OPENSSL */
-#define TLS_CTX	SSL_CTX *
-#define TLS_client(ctx,s)	s = SSL_new(ctx)
-#define TLS_server(ctx,s)	s = SSL_new(ctx)
-#define TLS_setfd(s,fd)	SSL_set_fd(s,fd)
-#define TLS_connect(s)	SSL_connect(s)
-#define TLS_accept(s)	SSL_accept(s)
-#define TLS_read(s,b,l)	SSL_read(s,b,l)
-#define TLS_write(s,b,l)	SSL_write(s,b,l)
-#define TLS_shutdown(s)	SSL_shutdown(s)
-#define TLS_close(s)	SSL_free(s)
+#define TLS_CTX    SSL_CTX *
+#define TLS_client(ctx, s)    s = SSL_new(ctx)
+#define TLS_server(ctx, s)    s = SSL_new(ctx)
+#define TLS_setfd(s, fd)    SSL_set_fd(s,fd)
+#define TLS_connect(s)    SSL_connect(s)
+#define TLS_accept(s)    SSL_accept(s)
+#define TLS_read(s, b, l)    SSL_read(s,b,l)
+#define TLS_write(s, b, l)    SSL_write(s,b,l)
+#define TLS_shutdown(s)    SSL_shutdown(s)
+#define TLS_close(s)    SSL_free(s)
 
 #endif
 #endif
