@@ -53,7 +53,7 @@ SODIR_darwin=$(LIBDIR)
 SODIR_mingw=$(BINDIR)
 SODIR=$(SODIR_$(SYS))
 
-SO_LDFLAGS_posix=-shared -Wl,-soname,$@
+SO_LDFLAGS_posix=-shared -Wl,$@
 SO_LDFLAGS_darwin=-dynamiclib -twolevel_namespace -undefined dynamic_lookup \
 	-fno-common -headerpad_max_install_names -install_name $(libdir)/$@
 SO_LDFLAGS_mingw=-shared -Wl,--out-implib,librtmp.dll.a
@@ -80,7 +80,7 @@ LDFLAGS=$(XLDFLAGS)
 
 OBJS=rtmp.o log.o amf.o hashswf.o parseurl.o
 
-all:	librtmp.a $(SO_LIB)
+all:	librtmp.a
 
 clean:
 	rm -f *.o *.a *.$(SOX) *$(SO_EXT) librtmp.pc
@@ -88,9 +88,9 @@ clean:
 librtmp.a: $(OBJS)
 	$(AR) rs $@ $?
 
-librtmp$(SO_EXT): $(OBJS)
-	$(CC) $(SO_LDFLAGS) $(LDFLAGS) -o $@ $^ $> $(CRYPTO_LIB)
-	ln -sf $@ librtmp.$(SOX)
+#librtmp$(SO_EXT): $(OBJS)
+#	$(CC) $(SO_LDFLAGS) $(LDFLAGS) -o $@ $^ $> $(CRYPTO_LIB)
+#	ln -sf $@ librtmp.$(SOX)
 
 log.o: log.c log.h Makefile
 rtmp.o: rtmp.c rtmp.h rtmp_sys.h handshake.h dh.h log.h amf.h Makefile
