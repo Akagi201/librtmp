@@ -1,0 +1,10 @@
+{
+  "name": "librtmp",
+  "version": "1.0.0",
+  "repo": "Akagi201/librtmp",
+  "description": "A heavily modified custom version of librtmp",
+  "keywords": ["librtmp", "rtmp", "rtmpdump", "Akagi201"],
+  "license": "MIT",
+  "src": ["amf.h", "dh.h", "handshake.h", "log.h", "rtmp_sys.h", "bytes.h", "dhgroups.h", "http.h", "rtmp.h", "amf.c", "hashswf.c", "log.c",
+    "parseurl.c", "rtmp.c"]
+}
