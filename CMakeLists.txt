@@ -27,6 +27,8 @@ parseurl.c
 rtmp.c
 )
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wuninitialized -Wno-deprecated -Wno-unused-const-variable")
+
 add_library(librtmp_static STATIC ${LIBRTMP_SOURCES} ${LIBRTMP_HEADERS})
 
 set_target_properties(librtmp_static PROPERTIES OUTPUT_NAME "rtmp")
