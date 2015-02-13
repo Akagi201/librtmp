@@ -27,9 +27,6 @@ parseurl.c
 rtmp.c
 )
 
-set_source_files_properties(${LIBRTMP_SOURCES} PROPERTIES
-		COMPILE_FLAGS "-fvisibility=hidden")
-
 add_library(librtmp_static STATIC ${LIBRTMP_SOURCES} ${LIBRTMP_HEADERS})
 
 set_target_properties(librtmp_static PROPERTIES OUTPUT_NAME "rtmp")
