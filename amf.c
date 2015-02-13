@@ -28,7 +28,6 @@
 #include <stdlib.h>
 
 #include "rtmp_sys.h"
-#include "amf.h"
 #include "log.h"
 #include "bytes.h"
 

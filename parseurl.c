@@ -24,9 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <assert.h>
-#include <ctype.h>
-
 #include "rtmp_sys.h"
 #include "log.h"
 
