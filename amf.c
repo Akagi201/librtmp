@@ -35,6 +35,9 @@ static const AMFObjectProperty AMFProp_Invalid = {{0, 0}, AMF_INVALID};
 static const AVal AV_empty = {0, 0};
 
 /* Data is Big-Endian */
+/*
+ * @brief decode 16 bits data to unsigned short
+ */
 unsigned short AMF_DecodeInt16(const char *data) {
     unsigned char *c = (unsigned char *) data;
     unsigned short val;
@@ -42,6 +45,9 @@ unsigned short AMF_DecodeInt16(const char *data) {
     return val;
 }
 
+/*
+ * @brief decode 26 bits data to unsigned int
+ */
 unsigned int AMF_DecodeInt24(const char *data) {
     unsigned char *c = (unsigned char *) data;
     unsigned int val;
@@ -49,6 +55,9 @@ unsigned int AMF_DecodeInt24(const char *data) {
     return val;
 }
 
+/*
+ * @brief decode 32 bits data to unsigned int
+ */
 unsigned int AMF_DecodeInt32(const char *data) {
     unsigned char *c = (unsigned char *) data;
     unsigned int val;
@@ -65,6 +74,8 @@ unsigned int AMF_DecodeInt32(const char *data) {
 void AMF_DecodeString(const char *data, AVal *bv) {
     bv->av_len = AMF_DecodeInt16(data);
     bv->av_val = (bv->av_len > 0) ? (char *) data + 2 : NULL;
+
+    return;
 }
 
 /*
@@ -74,6 +85,8 @@ void AMF_DecodeString(const char *data, AVal *bv) {
 void AMF_DecodeLongString(const char *data, AVal *bv) {
     bv->av_len = AMF_DecodeInt32(data);
     bv->av_val = (bv->av_len > 0) ? (char *) data + 4 : NULL;
+
+    return;
 }
 
 /*
@@ -128,7 +141,7 @@ double AMF_DecodeNumber(const char *data) {
 }
 
 /*
- * @brief parse data 1 bytes to boolean
+ * @brief parse data 1 byte to boolean
  */
 int AMF_DecodeBoolean(const char *data) {
     return *data != 0;
@@ -386,12 +399,16 @@ int AMFProp_IsValid(AMFObjectProperty *prop) {
  * @brief encode an amf object attribute, include attribute name and value
  */
 char *AMFProp_Encode(AMFObjectProperty *prop, char *pBuffer, char *pBufEnd) {
-    if (prop->p_type == AMF_INVALID)
+    if (prop->p_type == AMF_INVALID) {
         return NULL;
+    }
 
-    if (prop->p_type != AMF_NULL && pBuffer + prop->p_name.av_len + 2 + 1 >= pBufEnd)
+    // judge whether buffer space is big enough
+    if (prop->p_type != AMF_NULL && pBuffer + prop->p_name.av_len + 2 + 1 >= pBufEnd) {
         return NULL;
+    }
 
+    // encode attribute name, format: | length (2 bytes) | name string |
     if (prop->p_type != AMF_NULL && prop->p_name.av_len) {
         *pBuffer++ = prop->p_name.av_len >> 8;
         *pBuffer++ = prop->p_name.av_len & 0xff;
@@ -399,6 +416,7 @@ char *AMFProp_Encode(AMFObjectProperty *prop, char *pBuffer, char *pBufEnd) {
         pBuffer += prop->p_name.av_len;
     }
 
+    // encode according to attribute type
     switch (prop->p_type) {
         case AMF_NUMBER:
             pBuffer = AMF_EncodeNumber(pBuffer, pBufEnd, prop->p_vu.p_number);
@@ -438,8 +456,8 @@ char *AMFProp_Encode(AMFObjectProperty *prop, char *pBuffer, char *pBufEnd) {
     return pBuffer;
 }
 
-#define AMF3_INTEGER_MAX    268435455
-#define AMF3_INTEGER_MIN    -268435456
+#define AMF3_INTEGER_MAX    (268435455)
+#define AMF3_INTEGER_MIN    (-268435456)
 
 /*
  * @brief AMF3 parse an integer
