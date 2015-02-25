@@ -1047,7 +1047,7 @@ SocksNegotiate(RTMP *r) {
 }
 
 /*
- * @brief After server received createStream, send _result message to notify the status
+ * @brief After server received "createStream", send "_result" message to notify the status
  * of the client stream
  */
 int RTMP_ConnectStream(RTMP *r, int seekTime) {
@@ -1626,7 +1626,7 @@ SendBGHasStream(RTMP *r, double dId, AVal *playpath)
 SAVC(createStream);
 
 /*
- * @brief client send createStream message to server
+ * @brief client send "createStream" message to server
  */
 int RTMP_SendCreateStream(RTMP *r) {
     RTMPPacket packet;
@@ -1932,7 +1932,7 @@ RTMP_SendSeek(RTMP *r, int iTime) {
 
 /*
  * @brief After server received connect message, send Window Acknowledgement Size message to client
- * connect to the application in the connect message.
+ * and at the same time, connect to the application in the connect message.
  */
 int RTMP_SendServerBW(RTMP *r) {
     RTMPPacket packet;
@@ -2026,7 +2026,7 @@ SendCheckBW(RTMP *r) {
 SAVC(_result);
 
 /*
- * @brief server send user control message Stream Begin to client, _result in the message to notify the
+ * @brief server send user control message "Stream Begin" to client, "_result" in the message to notify the
  * status of the connection to client
  */
 static int SendCheckBWResult(RTMP *r, double txn) {
@@ -2083,7 +2083,7 @@ SendPong(RTMP *r, double txn) {
 SAVC(play);
 
 /*
- * @brief client send play message to server
+ * @brief client send "play" message to server
  */
 static int SendPlay(RTMP *r) {
     RTMPPacket packet;
@@ -3154,7 +3154,7 @@ HandleMetadata(RTMP *r, char *body, unsigned int len) {
 }
 
 /*
- * @brief After received play command, server send ChunkSize message
+ * @brief After received "play" command, server send "ChunkSize" message
  */
 static void HandleChangeChunkSize(RTMP *r, const RTMPPacket *packet) {
     if (packet->m_nBodySize >= 4) {

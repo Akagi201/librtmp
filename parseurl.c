@@ -29,6 +29,12 @@
 
 /*
  * @brief parse rtmp url, get protocol name, hostname, port, play path, application name
+ * @param[in] url: rtmp url
+ * @param[out] protocol: protocol name
+ * @param[out] host: name of host machine
+ * @param[out] port: port name
+ * @param[out] playpath: play path
+ * @param[out] app: application name
  */
 int RTMP_ParseURL(const char *url, int *protocol, AVal *host, unsigned int *port,
         AVal *playpath, AVal *app) {
@@ -36,6 +42,7 @@ int RTMP_ParseURL(const char *url, int *protocol, AVal *host, unsigned int *port
 
     RTMP_Log(RTMP_LOGDEBUG, "Parsing...");
 
+    // init output
     *protocol = RTMP_PROTOCOL_RTMP;
     *port = 0;
     playpath->av_len = 0;
@@ -50,25 +57,26 @@ int RTMP_ParseURL(const char *url, int *protocol, AVal *host, unsigned int *port
     if (!p) {
         RTMP_Log(RTMP_LOGERROR, "RTMP URL: No :// in url!");
         return FALSE;
-    }
-    {
+    } else {
+        // the length of the string before ://, length of uri scheme
         int len = (int) (p - url);
 
-        if (len == 4 && strncasecmp(url, "rtmp", 4) == 0)
+        // ingore cases
+        if (len == 4 && strncasecmp(url, "rtmp", 4) == 0) {
             *protocol = RTMP_PROTOCOL_RTMP;
-        else if (len == 5 && strncasecmp(url, "rtmpt", 5) == 0)
+        } else if (len == 5 && strncasecmp(url, "rtmpt", 5) == 0) {
             *protocol = RTMP_PROTOCOL_RTMPT;
-        else if (len == 5 && strncasecmp(url, "rtmps", 5) == 0)
+        } else if (len == 5 && strncasecmp(url, "rtmps", 5) == 0) {
             *protocol = RTMP_PROTOCOL_RTMPS;
-        else if (len == 5 && strncasecmp(url, "rtmpe", 5) == 0)
+        } else if (len == 5 && strncasecmp(url, "rtmpe", 5) == 0) {
             *protocol = RTMP_PROTOCOL_RTMPE;
-        else if (len == 5 && strncasecmp(url, "rtmfp", 5) == 0)
+        } else if (len == 5 && strncasecmp(url, "rtmfp", 5) == 0) {
             *protocol = RTMP_PROTOCOL_RTMFP;
-        else if (len == 6 && strncasecmp(url, "rtmpte", 6) == 0)
+        } else if (len == 6 && strncasecmp(url, "rtmpte", 6) == 0) {
             *protocol = RTMP_PROTOCOL_RTMPTE;
-        else if (len == 6 && strncasecmp(url, "rtmpts", 6) == 0)
+        } else if (len == 6 && strncasecmp(url, "rtmpts", 6) == 0) {
             *protocol = RTMP_PROTOCOL_RTMPTS;
-        else {
+        } else {
             RTMP_Log(RTMP_LOGWARNING, "Unknown protocol!\n");
             goto parsehost;
         }
@@ -77,7 +85,7 @@ int RTMP_ParseURL(const char *url, int *protocol, AVal *host, unsigned int *port
     RTMP_Log(RTMP_LOGDEBUG, "Parsed protocol: %d", *protocol);
 
     parsehost:
-    /* let's get the hostname */
+    /* let's get the hostname */ // skip "://"
     p += 3;
 
     /* check for sudden death */
@@ -91,25 +99,25 @@ int RTMP_ParseURL(const char *url, int *protocol, AVal *host, unsigned int *port
     ques = strchr(p, '?');
     slash = strchr(p, '/');
 
-    {
-        int hostlen;
-        if (slash)
-            hostlen = slash - p;
-        else
-            hostlen = end - p;
-        if (col && col - p < hostlen)
-            hostlen = col - p;
-
-        if (hostlen < 256) {
-            host->av_val = p;
-            host->av_len = hostlen;
-            RTMP_Log(RTMP_LOGDEBUG, "Parsed host    : %.*s", hostlen, host->av_val);
-        } else {
-            RTMP_Log(RTMP_LOGWARNING, "Hostname exceeds 255 characters!");
-        }
-
-        p += hostlen;
+    int hostlen;
+    if (slash) {
+        hostlen = slash - p;
+    } else {
+        hostlen = end - p;
     }
+    if (col && col - p < hostlen) {
+        hostlen = col - p;
+    }
+
+    if (hostlen < 256) {
+        host->av_val = p;
+        host->av_len = hostlen;
+        RTMP_Log(RTMP_LOGDEBUG, "Parsed host    : %.*s", hostlen, host->av_val);
+    } else {
+        RTMP_Log(RTMP_LOGWARNING, "Hostname exceeds 255 characters!");
+    }
+
+    p += hostlen;
 
     /* get the port number if available */
     if (*p == ':') {
@@ -127,56 +135,61 @@ int RTMP_ParseURL(const char *url, int *protocol, AVal *host, unsigned int *port
         RTMP_Log(RTMP_LOGWARNING, "No application or playpath in URL!");
         return TRUE;
     }
+
+    // skip "/"
     p = slash + 1;
 
-    {
-        /* parse application
-         *
-         * rtmp://host[:port]/app[/appinstance][/...]
-         * application = app[/appinstance]
-         */
+    /* parse application
+     *
+     * rtmp://host[:port]/app[/appinstance][/...]
+     * application = app[/appinstance]
+     */
 
-        char *slash2, *slash3 = NULL, *slash4 = NULL;
-        int applen, appnamelen;
+    char *slash2, *slash3 = NULL, *slash4 = NULL; // point to twice and third and forth slash
+    int applen, appnamelen;
 
-        slash2 = strchr(p, '/');
-        if (slash2)
-            slash3 = strchr(slash2 + 1, '/');
-        if (slash3)
-            slash4 = strchr(slash3 + 1, '/');
-
-        applen = end - p; /* ondemand, pass all parameters as app */
-        appnamelen = applen; /* ondemand length */
-
-        if (ques && strstr(p, "slist=")) { /* whatever it is, the '?' and slist= means we need to use everything as app and parse plapath from slist= */
-            appnamelen = ques - p;
-        }
-        else if (strncmp(p, "ondemand/", 9) == 0) {
-            /* app = ondemand/foobar, only pass app=ondemand */
-            applen = 8;
-            appnamelen = 8;
-        }
-        else { /* app!=ondemand, so app is app[/appinstance] */
-            if (slash4)
-                appnamelen = slash4 - p;
-            else if (slash3)
-                appnamelen = slash3 - p;
-            else if (slash2)
-                appnamelen = slash2 - p;
-
-            applen = appnamelen;
-        }
-
-        app->av_val = p;
-        app->av_len = applen;
-        RTMP_Log(RTMP_LOGDEBUG, "Parsed app     : %.*s", applen, p);
-
-        p += appnamelen;
+    slash2 = strchr(p, '/');
+    if (slash2) {
+        slash3 = strchr(slash2 + 1, '/');
+    }
+    if (slash3) {
+        slash4 = strchr(slash3 + 1, '/');
     }
 
-    if (*p == '/')
-        p++;
+    applen = end - p; /* ondemand, pass all parameters as app */
+    appnamelen = applen; /* ondemand length */
 
+    if (ques && strstr(p, "slist=")) {
+        /* whatever it is, the '?' and slist= means we need to use everything as app and parse play path from slist= */
+        appnamelen = ques - p;
+    } else if (strncmp(p, "ondemand/", 9) == 0) {
+        /* app = ondemand/foobar, only pass app=ondemand */
+        applen = 8;
+        appnamelen = 8;
+    } else {
+        /* app!=ondemand, so app is app[/appinstance] */
+        if (slash4) {
+            appnamelen = slash4 - p;
+        } else if (slash3) {
+            appnamelen = slash3 - p;
+        } else if (slash2) {
+            appnamelen = slash2 - p;
+        }
+
+        applen = appnamelen;
+    }
+
+    app->av_val = p;
+    app->av_len = applen;
+    RTMP_Log(RTMP_LOGDEBUG, "Parsed app     : %.*s", applen, p);
+
+    p += appnamelen;
+
+    if (*p == '/') {
+        p++;
+    }
+
+    // obtain play path
     if (end - p) {
         AVal av = {p, end - p};
         RTMP_ParsePlaypath(&av, playpath);
