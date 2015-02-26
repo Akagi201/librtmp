@@ -196,21 +196,29 @@ char *AMF_EncodeInt32(char *output, char *outend, int nVal) {
  * encode format: | type(1 byte) | length (2 or 4 bytes) | string data |
  */
 char *AMF_EncodeString(char *output, char *outend, const AVal *bv) {
+
+    // judge whether buffer space is big enough
     if ((bv->av_len < 65536 && output + 1 + 2 + bv->av_len > outend) ||
-            output + 1 + 4 + bv->av_len > outend)
+            output + 1 + 4 + bv->av_len > outend) {
         return NULL;
+    }
 
     if (bv->av_len < 65536) {
+        // short string
         *output++ = AMF_STRING;
 
         output = AMF_EncodeInt16(output, outend, bv->av_len);
-    }
-    else {
+    } else {
+        // long string
         *output++ = AMF_LONG_STRING;
 
         output = AMF_EncodeInt32(output, outend, bv->av_len);
     }
+
+    // copy string data in bv to output
     memcpy(output, bv->av_val, bv->av_len);
+
+    // modify output pointer
     output += bv->av_len;
 
     return output;
@@ -221,8 +229,9 @@ char *AMF_EncodeString(char *output, char *outend, const AVal *bv) {
  * encode format: | type(1 byte) | double value (8 bytes)|
  */
 char *AMF_EncodeNumber(char *output, char *outend, double dVal) {
-    if (output + 1 + 8 > outend)
+    if (output + 1 + 8 > outend) {
         return NULL;
+    }
 
     *output++ = AMF_NUMBER;    /* type: Number */
 
@@ -284,8 +293,9 @@ char *AMF_EncodeNumber(char *output, char *outend, double dVal) {
  * encode format: | type(1 byte) | 0 or 1 (1 byte) |
  */
 char *AMF_EncodeBoolean(char *output, char *outend, int bVal) {
-    if (output + 2 > outend)
+    if (output + 2 > outend) {
         return NULL;
+    }
 
     *output++ = AMF_BOOLEAN;
 
@@ -299,8 +309,10 @@ char *AMF_EncodeBoolean(char *output, char *outend, int bVal) {
  * encode format: | name length(2 byte) | name data | type (1 byte) |  value length(2 or 4 bytes) |  value string data  |
  */
 char *AMF_EncodeNamedString(char *output, char *outend, const AVal *strName, const AVal *strValue) {
-    if (output + 2 + strName->av_len > outend)
+    if (output + 2 + strName->av_len > outend) {
         return NULL;
+    }
+
     output = AMF_EncodeInt16(output, outend, strName->av_len);
 
     memcpy(output, strName->av_val, strName->av_len);
@@ -460,7 +472,11 @@ char *AMFProp_Encode(AMFObjectProperty *prop, char *pBuffer, char *pBufEnd) {
 #define AMF3_INTEGER_MIN    (-268435456)
 
 /*
- * @brief AMF3 parse an integer
+ * @brief AMF3 parse a variable-length unsigned integer
+ * @param[in] data: encoded data
+ * @param[out] valp: integer obtained
+ *
+ * @return number of bytes to express the integer
  */
 int AMF3ReadInteger(const char *data, int32_t *valp) {
     int i = 0;
@@ -497,23 +513,30 @@ int AMF3ReadInteger(const char *data, int32_t *valp) {
 
 /*
  * @brief AMF3 parse string
+ *
+ * @param[in] data: orignal string
+ * @param[out] str: output string
+ *
+ * @return number of bytes that read from data
  */
 int AMF3ReadString(const char *data, AVal *str) {
     int32_t ref = 0;
     int len;
     assert(str != 0);
 
+    // read variable-length unsigned 29 bit integer
     len = AMF3ReadInteger(data, &ref);
     data += len;
 
     if ((ref & 0x1) == 0) {                /* reference: 0xxx */
+        // the lowest bit of the unsigned integer is 0, means string reference encode, other bits are used to encode string reference index
         uint32_t refIndex = (ref >> 1);
         RTMP_Log(RTMP_LOGDEBUG,
                 "%s, string reference, index: %d, not supported, ignoring!",
                 __FUNCTION__, refIndex);
         return len;
-    }
-    else {
+    } else {
+        // the lowest bit of the unsigned integer is 1, means string is literally encoded, other bits are used to express the length of the UTF-8 encoded bytes
         uint32_t nSize = (ref >> 1);
 
         str->av_val = (char *) data;
@@ -526,6 +549,13 @@ int AMF3ReadString(const char *data, AVal *str) {
 
 /*
  * @brief decode an AMF3 attribute, include attribute name, type and value
+ *
+ * @param[out] prop: used to save decoded amf3 attributes
+ * @param[in] pBuffer: encoded amf3 attribute
+ * @param[in] nSize: pBuffer size
+ * @param[in] bDecodeName: whether decode attribute name
+ *
+ * @return number of bytes read during decode
  */
 int AMF3Prop_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
         int bDecodeName) {
@@ -635,6 +665,13 @@ int AMF3Prop_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
 
 /*
  * @brief decode an AMF attribute, include attribute name , length, type and value
+ *
+ * @param[out] prop: decoded amf attribute
+ * @param[in] pBuffer: encoded amf attribute
+ * @param[in] nSize: pBuffer size
+ * @param[in] bDecodeName: whether encode attribute name
+ *
+ * @return number of bytes read during decode
  */
 int AMFProp_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
         int bDecodeName) {
@@ -657,6 +694,7 @@ int AMFProp_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
     }
 
     if (bDecodeName) {
+        // obtain string length of attribute name
         unsigned short nNameSize = AMF_DecodeInt16(pBuffer);
         if (nNameSize > nSize - 2) {
             RTMP_Log(RTMP_LOGDEBUG,
@@ -665,6 +703,7 @@ int AMFProp_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
             return -1;
         }
 
+        // decode string, first 2 bytes means length, following is string
         AMF_DecodeString(pBuffer, &prop->p_name);
         nSize -= 2 + nNameSize;
         pBuffer += 2 + nNameSize;
@@ -674,6 +713,7 @@ int AMFProp_Decode(AMFObjectProperty *prop, const char *pBuffer, int nSize,
         return -1;
     }
 
+    // name type is 1 byte
     nSize--;
 
     prop->p_type = *pBuffer++;
@@ -882,13 +922,14 @@ void AMFProp_Reset(AMFObjectProperty *prop) {
 /* AMFObject */
 
 /*
- * @brief encode AMF object
+ * @brief encode AMF object, one AMF object contains many AMF attributes
  */
 char *AMF_Encode(AMFObject *obj, char *pBuffer, char *pBufEnd) {
     int i;
 
-    if (pBuffer + 4 >= pBufEnd)
+    if (pBuffer + 4 >= pBufEnd) {
         return NULL;
+    }
 
     *pBuffer++ = AMF_OBJECT;
 
@@ -898,14 +939,14 @@ char *AMF_Encode(AMFObject *obj, char *pBuffer, char *pBufEnd) {
             RTMP_Log(RTMP_LOGERROR, "AMF_Encode - failed to encode property in index %d",
                     i);
             break;
-        }
-        else {
+        } else {
             pBuffer = res;
         }
     }
 
-    if (pBuffer + 3 >= pBufEnd)
+    if (pBuffer + 3 >= pBufEnd) {
         return NULL;            /* no room for the end marker */
+    }
 
     pBuffer = AMF_EncodeInt24(pBuffer, pBufEnd, AMF_OBJECT_END);
 
@@ -977,6 +1018,9 @@ char *AMF_EncodeArray(AMFObject *obj, char *pBuffer, char *pBufEnd) {
 
 /*
  * @brief decode an attribute array, output to AMR obj
+ *
+ *
+ * @return if encode success, return bytes read, or -1
  */
 int AMF_DecodeArray(AMFObject *obj, const char *pBuffer, int nSize,
         int nArrayLen, int bDecodeName) {
@@ -1007,6 +1051,8 @@ int AMF_DecodeArray(AMFObject *obj, const char *pBuffer, int nSize,
 
 /*
  * @brief decode an AMF3 data
+ *
+ * @return bytes that read
  */
 int AMF3_Decode(AMFObject *obj, const char *pBuffer, int nSize, int bAMFData) {
     int nOriginalSize = nSize;
@@ -1134,6 +1180,8 @@ int AMF3_Decode(AMFObject *obj, const char *pBuffer, int nSize, int bAMFData) {
 
 /*
  * @brief decode an AMF object
+ *
+ * @return if decode success return bytes read, or -1
  */
 int AMF_Decode(AMFObject *obj, const char *pBuffer, int nSize, int bDecodeName) {
     int nOriginalSize = nSize;
@@ -1160,53 +1208,68 @@ int AMF_Decode(AMFObject *obj, const char *pBuffer, int nSize, int bDecodeName) 
         }
 
         nRes = AMFProp_Decode(&prop, pBuffer, nSize, bDecodeName);
-        if (nRes == -1)
+        if (nRes == -1) {
             bError = TRUE;
-        else {
+        } else {
             nSize -= nRes;
             pBuffer += nRes;
             AMF_AddProp(obj, &prop);
         }
     }
 
-    if (bError)
+    if (bError) {
         return -1;
+    }
 
     return nOriginalSize - nSize;
 }
 
-void
-AMF_AddProp(AMFObject *obj, const AMFObjectProperty *prop) {
-    if (!(obj->o_num & 0x0f))
+/*
+ * @brief add an amf attribute to amf object attribute array
+ */
+void AMF_AddProp(AMFObject *obj, const AMFObjectProperty *prop) {
+    if (!(obj->o_num & 0x0f)) {
         obj->o_props =
                 realloc(obj->o_props, (obj->o_num + 16) * sizeof(AMFObjectProperty));
+    }
     memcpy(&obj->o_props[obj->o_num++], prop, sizeof(AMFObjectProperty));
 }
 
-int
-AMF_CountProp(AMFObject *obj) {
+/*
+ * @brief obtain an amf object attribute count
+ */
+int AMF_CountProp(AMFObject *obj) {
     return obj->o_num;
 }
 
-AMFObjectProperty *
-AMF_GetProp(AMFObject *obj, const AVal *name, int nIndex) {
+/*
+ * @brief obtain related amf attribute according to attribute name or index. index prefered.
+ *
+ * if index < 0, use attribute name to search
+ *
+ * @return if search success, return related attribute, or return invalid attribute
+ */
+AMFObjectProperty *AMF_GetProp(AMFObject *obj, const AVal *name, int nIndex) {
     if (nIndex >= 0) {
-        if (nIndex < obj->o_num)
+        if (nIndex < obj->o_num) {
             return &obj->o_props[nIndex];
-    }
-    else {
+        }
+    } else {
         int n;
         for (n = 0; n < obj->o_num; n++) {
-            if (AVMATCH(&obj->o_props[n].p_name, name))
+            if (AVMATCH(&obj->o_props[n].p_name, name)) {
                 return &obj->o_props[n];
+            }
         }
     }
 
     return (AMFObjectProperty *) &AMFProp_Invalid;
 }
 
-void
-AMF_Dump(AMFObject *obj) {
+/*
+ * @brief output an amf object's all attribute information
+ */
+void AMF_Dump(AMFObject *obj) {
     int n;
     RTMP_Log(RTMP_LOGDEBUG, "(object begin)");
     for (n = 0; n < obj->o_num; n++) {
@@ -1215,8 +1278,10 @@ AMF_Dump(AMFObject *obj) {
     RTMP_Log(RTMP_LOGDEBUG, "(object end)");
 }
 
-void
-AMF_Reset(AMFObject *obj) {
+/*
+ * @brief reset an amf object
+ */
+void AMF_Reset(AMFObject *obj) {
     int n;
     for (n = 0; n < obj->o_num; n++) {
         AMFProp_Reset(&obj->o_props[n]);
@@ -1229,16 +1294,19 @@ AMF_Reset(AMFObject *obj) {
 
 /* AMF3ClassDefinition */
 
-void
-AMF3CD_AddProp(AMF3ClassDef *cd, AVal *prop) {
-    if (!(cd->cd_num & 0x0f))
+void AMF3CD_AddProp(AMF3ClassDef *cd, AVal *prop) {
+    if (!(cd->cd_num & 0x0f)) {
         cd->cd_props = realloc(cd->cd_props, (cd->cd_num + 16) * sizeof(AVal));
+    }
     cd->cd_props[cd->cd_num++] = *prop;
 }
 
-AVal *
-AMF3CD_GetProp(AMF3ClassDef *cd, int nIndex) {
-    if (nIndex >= cd->cd_num)
+/*
+ * @brief obtain cd attribute according to index
+ */
+AVal *AMF3CD_GetProp(AMF3ClassDef *cd, int nIndex) {
+    if (nIndex >= cd->cd_num) {
         return (AVal *) &AV_empty;
+    }
     return &cd->cd_props[nIndex];
 }
