@@ -844,16 +844,25 @@ int RTMP_SetupURL(RTMP *r, char *url) {
     return TRUE;
 }
 
-static int
-add_addr_info(struct sockaddr_in *service, AVal *host, int port) {
+/*
+ * @brief set host ip address and port to socket struct
+ * @param[out] service: socket ipv4 address struct
+ * @param[in] host: hostname and length
+ * @param[in] port: port number
+ *
+ * @return success: TRUE / FALSE
+ */
+static int add_addr_info(struct sockaddr_in *service, AVal *host, int port) {
     char *hostname;
     int ret = TRUE;
+    // get hostname
     if (host->av_val[host->av_len]) {
+        // the value after hostname is non-zero
         hostname = malloc(host->av_len + 1);
         memcpy(hostname, host->av_val, host->av_len);
         hostname[host->av_len] = '\0';
-    }
-    else {
+    } else {
+        // the value after hostname is zero
         hostname = host->av_val;
     }
 
@@ -870,13 +879,17 @@ add_addr_info(struct sockaddr_in *service, AVal *host, int port) {
 
     service->sin_port = htons(port);
     finish:
-    if (hostname != host->av_val)
+    if (hostname != host->av_val) {
         free(hostname);
+    }
     return ret;
 }
 
-int
-RTMP_Connect0(RTMP *r, struct sockaddr *service) {
+/*
+ * @brief create socket connection, r creates a socket connection to service's network adress
+ * set socket receive data timeout, and socket receive and send buffer size
+ */
+int RTMP_Connect0(RTMP *r, struct sockaddr *service) {
     int on = 1;
     r->m_sb.sb_timedout = FALSE;
     r->m_pausing = 0;
@@ -893,6 +906,7 @@ RTMP_Connect0(RTMP *r, struct sockaddr *service) {
         }
 
         if (r->Link.socksport) {
+            // connect via socks
             RTMP_Log(RTMP_LOGDEBUG, "%s ... SOCKS negotiation", __FUNCTION__);
             if (!SocksNegotiate(r)) {
                 RTMP_Log(RTMP_LOGERROR, "%s, SOCKS negotiation failed.", __FUNCTION__);
@@ -900,21 +914,18 @@ RTMP_Connect0(RTMP *r, struct sockaddr *service) {
                 return FALSE;
             }
         }
-    }
-    else {
+    } else {
         RTMP_Log(RTMP_LOGERROR, "%s, failed to create socket. Error: %d", __FUNCTION__,
                 GetSockError());
         return FALSE;
     }
 
     /* set timeout */
-    {
-        SET_RCVTIMEO(tv, r->Link.timeout);
-        if (setsockopt
-                (r->m_sb.sb_socket, SOL_SOCKET, SO_RCVTIMEO, (char *) &tv, sizeof(tv))) {
-            RTMP_Log(RTMP_LOGERROR, "%s, Setting socket timeout to %ds failed!",
-                    __FUNCTION__, r->Link.timeout);
-        }
+    SET_RCVTIMEO(tv, r->Link.timeout);
+    if (setsockopt
+            (r->m_sb.sb_socket, SOL_SOCKET, SO_RCVTIMEO, (char *) &tv, sizeof(tv))) {
+        RTMP_Log(RTMP_LOGERROR, "%s, Setting socket timeout to %ds failed!",
+                __FUNCTION__, r->Link.timeout);
     }
 
     setsockopt(r->m_sb.sb_socket, IPPROTO_TCP, TCP_NODELAY, (char *) &on, sizeof(on));
@@ -937,8 +948,12 @@ RTMP_TLS_Accept(RTMP *r, void *ctx) {
 #endif
 }
 
-int
-RTMP_Connect1(RTMP *r, RTMPPacket *cp) {
+/*
+ * @brief create RTMP conection, handshake begin
+ * 1) HandShake() finished handshake
+ * 2) SendConnectPacket() send connect command, used to create RTMP connection
+ */
+int RTMP_Connect1(RTMP *r, RTMPPacket *cp) {
     if (r->Link.protocol & RTMP_FEATURE_SSL) {
 #if defined(CRYPTO) && !defined(NO_SSL)
         TLS_client(RTMP_TLS_ctx, r->m_sb.sb_ssl);
@@ -984,31 +999,42 @@ RTMP_Connect1(RTMP *r, RTMPPacket *cp) {
     return TRUE;
 }
 
-int
-RTMP_Connect(RTMP *r, RTMPPacket *cp) {
+/*
+ * @brief create RTMP NetConnection
+ * a) create and set target socket, include ip address and port
+ * b) create socket connection, set socket timeout and receive, send buffer size
+ * c) handshake operation
+ * d) send datagram include connect command, used to create RTMP connection
+ */
+int RTMP_Connect(RTMP *r, RTMPPacket *cp) {
     struct sockaddr_in service;
-    if (!r->Link.hostname.av_len)
+    if (!r->Link.hostname.av_len) {
         return FALSE;
+    }
 
     memset(&service, 0, sizeof(struct sockaddr_in));
     service.sin_family = AF_INET;
 
     if (r->Link.socksport) {
         /* Connect via SOCKS */
-        if (!add_addr_info(&service, &r->Link.sockshost, r->Link.socksport))
+        if (!add_addr_info(&service, &r->Link.sockshost, r->Link.socksport)) {
             return FALSE;
-    }
-    else {
+        }
+    } else {
         /* Connect directly */
-        if (!add_addr_info(&service, &r->Link.hostname, r->Link.port))
+        if (!add_addr_info(&service, &r->Link.hostname, r->Link.port)) {
             return FALSE;
+        }
     }
 
-    if (!RTMP_Connect0(r, (struct sockaddr *) &service))
+    // the 0th connection, mainly used to create socket connection, didn't start true RTMP connection
+    if (!RTMP_Connect0(r, (struct sockaddr *) &service)) {
         return FALSE;
+    }
 
     r->m_bSendCounter = TRUE;
 
+    // the 1th connection, create true RTMP connection, mainly include handshake and send connect command
     return RTMP_Connect1(r, cp);
 }
 
@@ -1490,80 +1516,102 @@ SAVC(nonprivate);
 
 /*
  * @brief client send connect message to server
+ * This is the first command message every thime the program starts.
+ * command message contains command name, transport id, and command object
+ * command object has many related arguments
  */
 static int SendConnectPacket(RTMP *r, RTMPPacket *cp) {
     RTMPPacket packet;
     char pbuf[4096], *pend = pbuf + sizeof(pbuf);
     char *enc;
 
-    if (cp)
+    if (cp) {
         return RTMP_SendPacket(r, cp, TRUE);
+    }
 
     packet.m_nChannel = 0x03;    /* control channel (invoke) */
-    packet.m_headerType = RTMP_PACKET_SIZE_LARGE;
-    packet.m_packetType = RTMP_PACKET_TYPE_INVOKE;
+    packet.m_headerType = RTMP_PACKET_SIZE_LARGE; // chunck message header type, 11 bytes length
+    packet.m_packetType = RTMP_PACKET_TYPE_INVOKE; // message type id 20, means use amf0 encode
     packet.m_nTimeStamp = 0;
-    packet.m_nInfoField2 = 0;
+    packet.m_nInfoField2 = 0; // message stream id
     packet.m_hasAbsTimestamp = 0;
     packet.m_body = pbuf + RTMP_MAX_HEADER_SIZE;
 
     enc = packet.m_body;
-    enc = AMF_EncodeString(enc, pend, &av_connect);
-    enc = AMF_EncodeNumber(enc, pend, ++r->m_numInvokes);
-    *enc++ = AMF_OBJECT;
+    enc = AMF_EncodeString(enc, pend, &av_connect); // amf0 encode "connect"
+    enc = AMF_EncodeNumber(enc, pend, ++r->m_numInvokes); // encode command message number, that is transport id
+    *enc++ = AMF_OBJECT; // AMF object, contains many attribute encode
 
+    // encode application name
     enc = AMF_EncodeNamedString(enc, pend, &av_app, &r->Link.app);
-    if (!enc)
+    if (!enc) {
         return FALSE;
+    }
     if (r->Link.protocol & RTMP_FEATURE_WRITE) {
         enc = AMF_EncodeNamedString(enc, pend, &av_type, &av_nonprivate);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
     }
     if (r->Link.flashVer.av_len) {
+        // encode flash player version
         enc = AMF_EncodeNamedString(enc, pend, &av_flashVer, &r->Link.flashVer);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
     }
     if (r->Link.swfUrl.av_len) {
+        // encode connection swf file url
         enc = AMF_EncodeNamedString(enc, pend, &av_swfUrl, &r->Link.swfUrl);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
     }
     if (r->Link.tcUrl.av_len) {
+        // encode service url , format protocol://servername:port/appName/appInstance
         enc = AMF_EncodeNamedString(enc, pend, &av_tcUrl, &r->Link.tcUrl);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
     }
     if (!(r->Link.protocol & RTMP_FEATURE_WRITE)) {
+        // encode whether use proxy
         enc = AMF_EncodeNamedBoolean(enc, pend, &av_fpad, FALSE);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
         enc = AMF_EncodeNamedNumber(enc, pend, &av_capabilities, 15.0);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
         enc = AMF_EncodeNamedNumber(enc, pend, &av_audioCodecs, r->m_fAudioCodecs);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
         enc = AMF_EncodeNamedNumber(enc, pend, &av_videoCodecs, r->m_fVideoCodecs);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
         enc = AMF_EncodeNamedNumber(enc, pend, &av_videoFunction, 1.0);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
         if (r->Link.pageUrl.av_len) {
             enc = AMF_EncodeNamedString(enc, pend, &av_pageUrl, &r->Link.pageUrl);
-            if (!enc)
+            if (!enc) {
                 return FALSE;
+            }
         }
     }
     if (r->m_fEncoding != 0.0 || r->m_bSendEncoding) {    /* AMF0, AMF3 not fully supported yet */
         enc = AMF_EncodeNamedNumber(enc, pend, &av_objectEncoding, r->m_fEncoding);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
     }
-    if (enc + 3 >= pend)
+    if (enc + 3 >= pend) {
         return FALSE;
+    }
     *enc++ = 0;
     *enc++ = 0;            /* end of object - 0x00 0x00 0x09 */
     *enc++ = AMF_OBJECT_END;
@@ -1571,18 +1619,21 @@ static int SendConnectPacket(RTMP *r, RTMPPacket *cp) {
     /* add auth string */
     if (r->Link.auth.av_len) {
         enc = AMF_EncodeBoolean(enc, pend, r->Link.lFlags & RTMP_LF_AUTH);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
         enc = AMF_EncodeString(enc, pend, &r->Link.auth);
-        if (!enc)
+        if (!enc) {
             return FALSE;
+        }
     }
     if (r->Link.extras.o_num) {
         int i;
         for (i = 0; i < r->Link.extras.o_num; i++) {
             enc = AMFProp_Encode(&r->Link.extras.o_props[i], enc, pend);
-            if (!enc)
+            if (!enc) {
                 return FALSE;
+            }
         }
     }
     packet.m_nBodySize = enc - packet.m_body;
