@@ -689,6 +689,14 @@ static void rtmpe9_sig(uint8_t *in, uint8_t *out, int keyid) {
 
 /*
  * @brief client handshake
+ * send c0 and c1, when received s0 and s1, send c2. When received s2 and verified it, client handshake finished.
+ * s1 is sent to the server as c2 remaining the same
+ *
+ * c0/s0(1 byte): version
+ * c1/s1(1536 bytes): |time(4 bytes)| 0 0 0 0(4 bytes) | 1528 random numbers |
+ * c2/s2(1536 bytes): |time(4 bytes) (the other end send time)| time2 (4 bytes) | 1528 bytes the other end random reply |
+ *
+ * @return handshake success true / or false
  */
 static int HandShake(RTMP *r, int FP9HandShake) {
     int i, offalg = 0;
@@ -702,25 +710,28 @@ static int HandShake(RTMP *r, int FP9HandShake) {
     int32_t *ip;
     uint32_t uptime;
 
-    uint8_t clientbuf[RTMP_SIG_SIZE + 4], *clientsig = clientbuf + 4;
+    uint8_t clientbuf[RTMP_SIG_SIZE + 4], *clientsig = clientbuf + 4; // clientbuf stores c0 and c1, clientsig stores c1
     uint8_t serversig[RTMP_SIG_SIZE], client2[RTMP_SIG_SIZE], *reply;
     uint8_t type;
     getoff *getdh = NULL, *getdig = NULL;
 
-    if (encrypted || r->Link.SWFSize)
+    if (encrypted || r->Link.SWFSize) {
         FP9HandShake = TRUE;
-    else
+    } else {
         FP9HandShake = FALSE;
+    }
 
     r->Link.rc4keyIn = r->Link.rc4keyOut = 0;
 
     if (encrypted) {
         clientsig[-1] = 0x06;    /* 0x08 is RTMPE as well */
         offalg = 1;
+    } else {
+        /* not encrypted */
+        clientsig[-1] = 0x03; // 0x03 is RTMP version, that is c0
     }
-    else
-        clientsig[-1] = 0x03;
 
+    // get system time (unit: ms), write it to c1, 4 bytes
     uptime = htonl(RTMP_GetTime());
     memcpy(clientsig, &uptime, 4);
 
@@ -729,8 +740,7 @@ static int HandShake(RTMP *r, int FP9HandShake) {
         if (encrypted) {
             clientsig[4] = 128;
             clientsig[6] = 3;
-        }
-        else {
+        } else {
             clientsig[4] = 10;
             clientsig[6] = 45;
         }
@@ -740,18 +750,21 @@ static int HandShake(RTMP *r, int FP9HandShake) {
         RTMP_Log(RTMP_LOGDEBUG, "%s: Client type: %02X", __FUNCTION__, clientsig[-1]);
         getdig = digoff[offalg];
         getdh = dhoff[offalg];
-    }
-    else {
+    } else {
+        // after system time is 4 bytes 0, fixed
         memset(&clientsig[4], 0, 4);
     }
 
     /* generate random data */
 #ifdef _DEBUG
+    // debug version: 1528 random bytes all set to 0xff
   memset(clientsig+8, 0, RTMP_SIG_SIZE-8);
 #else
+    // release version: use rand() to generate 1528 random number
     ip = (int32_t *) (clientsig + 8);
-    for (i = 2; i < RTMP_SIG_SIZE / 4; i++)
+    for (i = 2; i < RTMP_SIG_SIZE / 4; i++) {
         *ip++ = rand();
+    }
 #endif
 
     /* set handshake digest */
@@ -797,22 +810,33 @@ static int HandShake(RTMP *r, int FP9HandShake) {
   RTMP_LogHex(RTMP_LOGDEBUG, clientsig, RTMP_SIG_SIZE);
 #endif
 
-    if (!WriteN(r, (char *) clientsig - 1, RTMP_SIG_SIZE + 1))
+    // send handshake c0 and c1
+    if (!WriteN(r, (char *) clientsig - 1, RTMP_SIG_SIZE + 1)) {
         return FALSE;
+    }
 
-    if (ReadN(r, (char *) &type, 1) != 1)    /* 0x03 or 0x06 */
+    // read datagram, len: 1 byte, store to type
+    // this is s0, means the rtmp version server uses
+    if (ReadN(r, (char *) &type, 1) != 1) {
+        /* 0x03 or 0x06 */ // 0x03 is plaintext, 0x06 is encrypted, others are invalid
         return FALSE;
+    }
 
     RTMP_Log(RTMP_LOGDEBUG, "%s: Type Answer   : %02X", __FUNCTION__, type);
 
-    if (type != clientsig[-1])
+    if (type != clientsig[-1]) {
+        // client version and server version doesn't match
         RTMP_Log(RTMP_LOGWARNING, "%s: Type mismatch: client sent %d, server answered %d",
                 __FUNCTION__, clientsig[-1], type);
+    }
 
-    if (ReadN(r, (char *) serversig, RTMP_SIG_SIZE) != RTMP_SIG_SIZE)
+    // read s1 sent from server, judge whether random array length is the same
+    if (ReadN(r, (char *) serversig, RTMP_SIG_SIZE) != RTMP_SIG_SIZE) {
         return FALSE;
+    }
 
     /* decode server response */
+    /* time in s1 and time in c2 should be the same. */
     memcpy(&uptime, serversig, 4);
     uptime = ntohl(uptime);
 
@@ -820,8 +844,9 @@ static int HandShake(RTMP *r, int FP9HandShake) {
     RTMP_Log(RTMP_LOGDEBUG, "%s: FMS Version   : %d.%d.%d.%d", __FUNCTION__, serversig[4],
             serversig[5], serversig[6], serversig[7]);
 
-    if (FP9HandShake && type == 3 && !serversig[4])
+    if (FP9HandShake && type == 3 && !serversig[4]) {
         FP9HandShake = FALSE;
+    }
 
 #ifdef _DEBUG
   RTMP_Log(RTMP_LOGDEBUG, "Server signature:");
@@ -893,8 +918,9 @@ static int HandShake(RTMP *r, int FP9HandShake) {
       memset(reply, 0xff, RTMP_SIG_SIZE);
 #else
         ip = (int32_t *) reply;
-        for (i = 0; i < RTMP_SIG_SIZE / 4; i++)
+        for (i = 0; i < RTMP_SIG_SIZE / 4; i++) {
             *ip++ = rand();
+        }
 #endif
         /* calculate response now */
         signatureResp = reply + RTMP_SIG_SIZE - SHA256_DIGEST_LENGTH;
@@ -915,21 +941,22 @@ static int HandShake(RTMP *r, int FP9HandShake) {
             uint8_t *dptr = digestResp;
             uint8_t *sig = signatureResp;
             /* encrypt signatureResp */
-            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8)
+            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8) {
                 rtmpe8_sig(sig + i, sig + i, dptr[i] % 15);
+            }
         }
         else if (type == 9) {
             uint8_t *dptr = digestResp;
             uint8_t *sig = signatureResp;
             /* encrypt signatureResp */
-            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8)
+            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8) {
                 rtmpe9_sig(sig + i, sig + i, dptr[i] % 15);
+            }
         }
 #endif
         RTMP_Log(RTMP_LOGDEBUG, "%s: Client signature calculated:", __FUNCTION__);
         RTMP_LogHex(RTMP_LOGDEBUG, signatureResp, SHA256_DIGEST_LENGTH);
-    }
-    else {
+    } else {
         reply = serversig;
 #if 0
       uptime = htonl(RTMP_GetTime());
@@ -942,12 +969,16 @@ static int HandShake(RTMP *r, int FP9HandShake) {
     __FUNCTION__);
   RTMP_LogHex(RTMP_LOGDEBUG, reply, RTMP_SIG_SIZE);
 #endif
-    if (!WriteN(r, (char *) reply, RTMP_SIG_SIZE))
+    // send handshake c2 (1536 bytes) to server
+    if (!WriteN(r, (char *) reply, RTMP_SIG_SIZE)) {
         return FALSE;
+    }
 
     /* 2nd part of handshake */
-    if (ReadN(r, (char *) serversig, RTMP_SIG_SIZE) != RTMP_SIG_SIZE)
+    // read from the server handshake s2 (1536 bytes)
+    if (ReadN(r, (char *) serversig, RTMP_SIG_SIZE) != RTMP_SIG_SIZE) {
         return FALSE;
+    }
 
 #ifdef _DEBUG
   RTMP_Log(RTMP_LOGDEBUG, "%s: 2nd handshake: ", __FUNCTION__);
@@ -983,15 +1014,17 @@ static int HandShake(RTMP *r, int FP9HandShake) {
             uint8_t *dptr = digest;
             uint8_t *sig = signature;
             /* encrypt signature */
-            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8)
+            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8) {
                 rtmpe8_sig(sig + i, sig + i, dptr[i] % 15);
+            }
         }
         else if (type == 9) {
             uint8_t *dptr = digest;
             uint8_t *sig = signature;
             /* encrypt signatureResp */
-            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8)
+            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8) {
                 rtmpe9_sig(sig + i, sig + i, dptr[i] % 15);
+            }
         }
 #endif
         RTMP_Log(RTMP_LOGDEBUG, "%s: Signature calculated:", __FUNCTION__);
@@ -1001,8 +1034,7 @@ static int HandShake(RTMP *r, int FP9HandShake) {
                         SHA256_DIGEST_LENGTH) != 0) {
             RTMP_Log(RTMP_LOGWARNING, "%s: Server not genuine Adobe!", __FUNCTION__);
             return FALSE;
-        }
-        else {
+        } else {
             RTMP_Log(RTMP_LOGDEBUG, "%s: Genuine Adobe Flash Media Server", __FUNCTION__);
         }
 
@@ -1036,6 +1068,9 @@ static int HandShake(RTMP *r, int FP9HandShake) {
 
 /*
  * @brief server handshake
+ * server received c0 or c1 and send s0 and s1, when server received c0 and c1,
+ * send s2. when server get c2 and verify it, the server finished handshake
+ * This point, send c1 as it is as s2 to the client
  */
 static int SHandShake(RTMP * r) {
     int i, offalg = 0;
@@ -1053,40 +1088,45 @@ static int SHandShake(RTMP * r) {
     uint32_t uptime;
     getoff *getdh = NULL, *getdig = NULL;
 
-    if (ReadN(r, (char *) &type, 1) != 1)    /* 0x03 or 0x06 */
+    // read c0 from client, means client call for the rtmp version that server should use.
+    if (ReadN(r, (char *) &type, 1) != 1) {
+        /* 0x03 or 0x06 */
         return FALSE;
+    }
 
-    if (ReadN(r, (char *) clientsig, RTMP_SIG_SIZE) != RTMP_SIG_SIZE)
+    if (ReadN(r, (char *) clientsig, RTMP_SIG_SIZE) != RTMP_SIG_SIZE) {
         return FALSE;
+    }
 
     RTMP_Log(RTMP_LOGDEBUG, "%s: Type Requested : %02X", __FUNCTION__, type);
     RTMP_LogHex(RTMP_LOGDEBUG2, clientsig, RTMP_SIG_SIZE);
 
     if (type == 3) {
         encrypted = FALSE;
-    }
-    else if (type == 6 || type == 8) {
+    } else if (type == 6 || type == 8) {
         offalg = 1;
         encrypted = TRUE;
         FP9HandShake = TRUE;
         r->Link.protocol |= RTMP_FEATURE_ENC;
         /* use FP10 if client is capable */
-        if (clientsig[4] == 128)
+        if (clientsig[4] == 128) {
             type = 8;
-    }
-    else {
+        }
+    } else {
         RTMP_Log(RTMP_LOGERROR, "%s: Unknown version %02x",
                 __FUNCTION__, type);
         return FALSE;
     }
 
-    if (!FP9HandShake && clientsig[4])
+    if (!FP9HandShake && clientsig[4]) {
         FP9HandShake = TRUE;
+    }
 
     serversig[-1] = type;
 
     r->Link.rc4keyIn = r->Link.rc4keyOut = 0;
 
+    // get system time (unit: ms), save in s1, 4 bytes
     uptime = htonl(RTMP_GetTime());
     memcpy(serversig, &uptime, 4);
 
@@ -1099,18 +1139,21 @@ static int SHandShake(RTMP * r) {
 
         getdig = digoff[offalg];
         getdh = dhoff[offalg];
-    }
-    else {
+    } else {
+        // after system time is fixed 4 bytes zero
         memset(&serversig[4], 0, 4);
     }
 
     /* generate random data */
 #ifdef _DEBUG
+    // debug version: the 1528 random number all set to 0xff
   memset(serversig+8, 0, RTMP_SIG_SIZE-8);
 #else
+    // release version: use random number
     ip = (int32_t *) (serversig + 8);
-    for (i = 2; i < RTMP_SIG_SIZE / 4; i++)
+    for (i = 2; i < RTMP_SIG_SIZE / 4; i++) {
         *ip++ = rand();
+    }
 #endif
 
     /* set handshake digest */
@@ -1155,8 +1198,10 @@ static int SHandShake(RTMP * r) {
     RTMP_Log(RTMP_LOGDEBUG2, "Serversig: ");
     RTMP_LogHex(RTMP_LOGDEBUG2, serversig, RTMP_SIG_SIZE);
 
-    if (!WriteN(r, (char *) serversig - 1, RTMP_SIG_SIZE + 1))
+    // send handshake s0 and s1
+    if (!WriteN(r, (char *) serversig - 1, RTMP_SIG_SIZE + 1)) {
         return FALSE;
+    }
 
     /* decode client response */
     memcpy(&uptime, clientsig, 4);
@@ -1274,12 +1319,15 @@ static int SHandShake(RTMP * r) {
             __FUNCTION__);
     RTMP_LogHex(RTMP_LOGDEBUG2, clientsig, RTMP_SIG_SIZE);
 
-    if (!WriteN(r, (char *) clientsig, RTMP_SIG_SIZE))
+    if (!WriteN(r, (char *) clientsig, RTMP_SIG_SIZE)) {
         return FALSE;
+    }
 
     /* 2nd part of handshake */
-    if (ReadN(r, (char *) clientsig, RTMP_SIG_SIZE) != RTMP_SIG_SIZE)
+    // send handshake s2(1536 bytes) to the client
+    if (ReadN(r, (char *) clientsig, RTMP_SIG_SIZE) != RTMP_SIG_SIZE) {
         return FALSE;
+    }
 
     RTMP_Log(RTMP_LOGDEBUG2, "%s: 2nd handshake: ", __FUNCTION__);
     RTMP_LogHex(RTMP_LOGDEBUG2, clientsig, RTMP_SIG_SIZE);
@@ -1302,15 +1350,16 @@ static int SHandShake(RTMP * r) {
             uint8_t *dptr = digest;
             uint8_t *sig = signature;
             /* encrypt signatureResp */
-            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8)
+            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8) {
                 rtmpe8_sig(sig + i, sig + i, dptr[i] % 15);
-        }
-        else if (type == 9) {
+            }
+        } else if (type == 9) {
             uint8_t *dptr = digest;
             uint8_t *sig = signature;
             /* encrypt signatureResp */
-            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8)
+            for (i = 0; i < SHA256_DIGEST_LENGTH; i += 8) {
                 rtmpe9_sig(sig + i, sig + i, dptr[i] % 15);
+            }
         }
 #endif
 
@@ -1325,8 +1374,7 @@ static int SHandShake(RTMP * r) {
                         SHA256_DIGEST_LENGTH) != 0) {
             RTMP_Log(RTMP_LOGWARNING, "%s: Client not genuine Adobe!", __FUNCTION__);
             return FALSE;
-        }
-        else {
+        } else {
             RTMP_Log(RTMP_LOGDEBUG, "%s: Genuine Adobe Flash Player", __FUNCTION__);
         }
 
@@ -1345,8 +1393,7 @@ static int SHandShake(RTMP * r) {
                 RC4_encrypt(r->Link.rc4keyOut, RTMP_SIG_SIZE, (uint8_t *) buff);
             }
         }
-    }
-    else {
+    } else {
         if (memcmp(serversig, clientsig, RTMP_SIG_SIZE) != 0) {
             RTMP_Log(RTMP_LOGWARNING, "%s: client signature does not match!",
                     __FUNCTION__);
