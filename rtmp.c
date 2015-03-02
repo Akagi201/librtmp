@@ -1713,8 +1713,10 @@ int RTMP_SendCreateStream(RTMP *r) {
 
 SAVC(FCSubscribe);
 
-static int
-SendFCSubscribe(RTMP *r, AVal *subscribepath) {
+/*
+ * @brief send FCSubscribe command
+ */
+static int SendFCSubscribe(RTMP *r, AVal *subscribepath) {
     RTMPPacket packet;
     char pbuf[512], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1744,8 +1746,10 @@ SendFCSubscribe(RTMP *r, AVal *subscribepath) {
 /* Justin.tv specific authentication */
 static const AVal av_NetStream_Authenticate_UsherToken = AVC("NetStream.Authenticate.UsherToken");
 
-static int
-SendUsherToken(RTMP *r, AVal *usherToken) {
+/*
+ * @brief send NetStream_Authenticate_UsherToken command
+ */
+static int SendUsherToken(RTMP *r, AVal *usherToken) {
     RTMPPacket packet;
     char pbuf[1024], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1775,8 +1779,10 @@ SendUsherToken(RTMP *r, AVal *usherToken) {
 
 SAVC(releaseStream);
 
-static int
-SendReleaseStream(RTMP *r) {
+/*
+ * @brief send release stream command
+ */
+static int SendReleaseStream(RTMP *r) {
     RTMPPacket packet;
     char pbuf[1024], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1804,8 +1810,10 @@ SendReleaseStream(RTMP *r) {
 
 SAVC(FCPublish);
 
-static int
-SendFCPublish(RTMP *r) {
+/*
+ * @brief send FCPublish command
+ */
+static int SendFCPublish(RTMP *r) {
     RTMPPacket packet;
     char pbuf[1024], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1833,8 +1841,10 @@ SendFCPublish(RTMP *r) {
 
 SAVC(FCUnpublish);
 
-static int
-SendFCUnpublish(RTMP *r) {
+/*
+ * @brief send FCUnpublish command
+ */
+static int SendFCUnpublish(RTMP *r) {
     RTMPPacket packet;
     char pbuf[1024], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1864,8 +1874,10 @@ SAVC(publish);
 SAVC(live);
 SAVC(record);
 
-static int
-SendPublish(RTMP *r) {
+/*
+ * @brief send Publish command
+ */
+static int SendPublish(RTMP *r) {
     RTMPPacket packet;
     char pbuf[1024], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1898,8 +1910,10 @@ SendPublish(RTMP *r) {
 
 SAVC(deleteStream);
 
-static int
-SendDeleteStream(RTMP *r, double dStreamId) {
+/*
+ * @brief send deleteStream command
+ */
+static int SendDeleteStream(RTMP *r, double dStreamId) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1926,8 +1940,10 @@ SendDeleteStream(RTMP *r, double dStreamId) {
 
 SAVC(pause);
 
-int
-RTMP_SendPause(RTMP *r, int DoPause, int iTime) {
+/*
+ * @brief send pause command
+ */
+int RTMP_SendPause(RTMP *r, int DoPause, int iTime) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1962,8 +1978,10 @@ int RTMP_Pause(RTMP *r, int DoPause) {
 
 SAVC(seek);
 
-int
-RTMP_SendSeek(RTMP *r, int iTime) {
+/*
+ * @brief send seek command
+ */
+int RTMP_SendSeek(RTMP *r, int iTime) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -1993,6 +2011,7 @@ RTMP_SendSeek(RTMP *r, int iTime) {
 /*
  * @brief After server received connect message, send Window Acknowledgement Size message to client
  * and at the same time, connect to the application in the connect message.
+ * send serverBW command (acknownledgement windows size)
  */
 int RTMP_SendServerBW(RTMP *r) {
     RTMPPacket packet;
@@ -2014,6 +2033,7 @@ int RTMP_SendServerBW(RTMP *r) {
 
 /*
  * @brief After client handled the BW message, send Window Acknowledgement Size message to server.
+ * send ClientBW command (the other end bandwidth)
  */
 int RTMP_SendClientBW(RTMP *r) {
     RTMPPacket packet;
@@ -2034,8 +2054,10 @@ int RTMP_SendClientBW(RTMP *r) {
     return RTMP_SendPacket(r, &packet, FALSE);
 }
 
-static int
-SendBytesReceived(RTMP *r) {
+/*
+ * @brief send acknownledgement command(received bytes)
+ */
+static int SendBytesReceived(RTMP *r) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
 
@@ -2058,8 +2080,10 @@ SendBytesReceived(RTMP *r) {
 
 SAVC(_checkbw);
 
-static int
-SendCheckBW(RTMP *r) {
+/*
+ * @brief send checkbw command
+ */
+static int SendCheckBW(RTMP *r) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -2088,6 +2112,7 @@ SAVC(_result);
 /*
  * @brief server send user control message "Stream Begin" to client, "_result" in the message to notify the
  * status of the connection to client
+ * send result command
  */
 static int SendCheckBWResult(RTMP *r, double txn) {
     RTMPPacket packet;
@@ -2116,8 +2141,10 @@ static int SendCheckBWResult(RTMP *r, double txn) {
 SAVC(ping);
 SAVC(pong);
 
-static int
-SendPong(RTMP *r, double txn) {
+/*
+ * @brief send pong command
+ */
+static int SendPong(RTMP *r, double txn) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -2209,8 +2236,10 @@ static int SendPlay(RTMP *r) {
 SAVC(set_playlist);
 SAVC(0);
 
-static int
-SendPlaylist(RTMP *r) {
+/*
+ * @brief send playlist command
+ */
+static int SendPlaylist(RTMP *r) {
     RTMPPacket packet;
     char pbuf[1024], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -2246,8 +2275,10 @@ SendPlaylist(RTMP *r) {
     return RTMP_SendPacket(r, &packet, TRUE);
 }
 
-static int
-SendSecureTokenResponse(RTMP *r, AVal *resp) {
+/*
+ * @brief send secureTokenResponse command
+ */
+static int SendSecureTokenResponse(RTMP *r, AVal *resp) {
     RTMPPacket packet;
     char pbuf[1024], *pend = pbuf + sizeof(pbuf);
     char *enc;
@@ -2274,6 +2305,7 @@ SendSecureTokenResponse(RTMP *r, AVal *resp) {
 }
 
 /*
+send user control message
 from http://jira.red5.org/confluence/display/docs/Ping:
 
 Ping is the most mysterious message in RTMP and till now we haven't fully interpreted it yet. In summary, Ping message is used as a special command that are exchanged between client and server. This page aims to document all known Ping messages. Expect the list to grow.
@@ -2289,8 +2321,7 @@ The type of Ping packet is 0x4 and contains two mandatory parameters and two opt
     * type 26: SWFVerification request
     * type 27: SWFVerification response
 */
-int
-RTMP_SendCtrl(RTMP *r, short nType, unsigned int nObject, unsigned int nTime) {
+int RTMP_SendCtrl(RTMP *r, short nType, unsigned int nObject, unsigned int nTime) {
     RTMPPacket packet;
     char pbuf[256], *pend = pbuf + sizeof(pbuf);
     int nSize;
