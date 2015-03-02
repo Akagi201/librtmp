@@ -1154,8 +1154,10 @@ RTMP_DeleteStream(RTMP *r) {
     r->m_stream_id = -1;
 }
 
-int
-RTMP_GetNextMediaPacket(RTMP *r, RTMPPacket *packet) {
+/*
+ * @brief get next media packet(audio, video or metadata)
+ */
+int RTMP_GetNextMediaPacket(RTMP *r, RTMPPacket *packet) {
     int bHasMediaPacket = 0;
 
     while (!bHasMediaPacket && RTMP_IsConnected(r)
@@ -4352,12 +4354,11 @@ HTTP_read(RTMP *r, int fill) {
 
 #define MAX_IGNORED_FRAMES    50
 
-/* Read from the stream until we get a media packet.
+/* Read from the stream until we get a media packet. read one RTMPPacket data from network
  * Returns -3 if Play.Close/Stop, -2 if fatal error, -1 if no more media
  * packets, 0 if ignorable error, >0 if there is a media packet
  */
-static int
-Read_1_Packet(RTMP *r, char *buf, unsigned int buflen) {
+static int Read_1_Packet(RTMP *r, char *buf, unsigned int buflen) {
     uint32_t prevTagSize = 0;
     int rtnGetNextMediaPacket = 0, ret = RTMP_READ_EOF;
     RTMPPacket packet = {0};
@@ -4785,14 +4786,16 @@ Read_1_Packet(RTMP *r, char *buf, unsigned int buflen) {
 
 static const char flvHeader[] = {'F', 'L', 'V', 0x01,
         0x00,                /* 0x04 == audio, 0x01 == video */
-        0x00, 0x00, 0x00, 0x09,
-        0x00, 0x00, 0x00, 0x00
+        0x00, 0x00, 0x00, 0x09, // Offset = 0x00000009, 4 bytes
+        0x00, 0x00, 0x00, 0x00 // Previous Tag Size = 0x00000000, 4 bytes
 };
 
 #define HEADERBUF    (128*1024)
 
-int
-RTMP_Read(RTMP *r, char *buf, int size) {
+/*
+ * @brief read audio / video data
+ */
+int RTMP_Read(RTMP *r, char *buf, int size) {
     int nRead = 0, total = 0;
 
     /* can't continue */
