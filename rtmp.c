@@ -1197,8 +1197,13 @@ int RTMP_GetNextMediaPacket(RTMP *r, RTMPPacket *packet) {
     return bHasMediaPacket;
 }
 
-int
-RTMP_ClientPacket(RTMP *r, RTMPPacket *packet) {
+/*
+ * @brief according to different received message types, do different things
+ * message type: protocol control message , flv data, flex message
+ *
+ * @return if contains media data(audio/ video/ metadata), return 1, or return 0
+ */
+int RTMP_ClientPacket(RTMP *r, RTMPPacket *packet) {
     int bHasMediaPacket = 0;
     switch (packet->m_packetType) {
         case RTMP_PACKET_TYPE_CHUNK_SIZE:
@@ -2388,10 +2393,13 @@ int RTMP_SendCtrl(RTMP *r, short nType, unsigned int nObject, unsigned int nTime
     return RTMP_SendPacket(r, &packet, FALSE);
 }
 
-static void
-AV_erase(RTMP_METHOD *vals, int *num, int i, int freeit) {
-    if (freeit)
+/*
+ * @brief remove the ith method from queue vals
+ */
+static void AV_erase(RTMP_METHOD *vals, int *num, int i, int freeit) {
+    if (freeit) {
         free(vals[i].name.av_val);
+    }
     (*num)--;
     for (; i < *num; i++) {
         vals[i] = vals[i + 1];
@@ -2401,16 +2409,21 @@ AV_erase(RTMP_METHOD *vals, int *num, int i, int freeit) {
     vals[i].num = 0;
 }
 
-void
-RTMP_DropRequest(RTMP *r, int i, int freeit) {
+/*
+ * @brief remove the ith method in the RTMP to be called method queue
+ */
+void RTMP_DropRequest(RTMP *r, int i, int freeit) {
     AV_erase(r->m_methodCalls, &r->m_numCalls, i, freeit);
 }
 
-static void
-AV_queue(RTMP_METHOD **vals, int *num, AVal *av, int txn) {
+/*
+ * @brief add new method av to method queue vals
+ */
+static void AV_queue(RTMP_METHOD **vals, int *num, AVal *av, int txn) {
     char *tmp;
-    if (!(*num & 0x0f))
+    if (!(*num & 0x0f)) {
         *vals = realloc(*vals, (*num + 16) * sizeof(RTMP_METHOD));
+    }
     tmp = malloc(av->av_len + 1);
     memcpy(tmp, av->av_val, av->av_len);
     tmp[av->av_len] = '\0';
@@ -2419,8 +2432,10 @@ AV_queue(RTMP_METHOD **vals, int *num, AVal *av, int txn) {
     (*vals)[(*num)++].name.av_val = tmp;
 }
 
-static void
-AV_clear(RTMP_METHOD *vals, int num) {
+/*
+ * @brief clean all method in method queue vals
+ */
+static void AV_clear(RTMP_METHOD *vals, int num) {
     int i;
     for (i = 0; i < num; i++)
         free(vals[i].name.av_val);
@@ -2882,8 +2897,13 @@ static const AVal av_NetConnection_Connect_Rejected =
         AVC("NetConnection.Connect.Rejected");
 
 /* Returns 0 for OK/Failed/error, 1 for 'Stop or Complete' */
-static int
-HandleInvoke(RTMP *r, const char *body, unsigned int nBodySize) {
+/*
+ * @brief handle server send AMF0 encode command
+ * 1) calll AMF_Decode() to decode AMF command data
+ * 2) call AMFProp_GetString() to get true command string
+ * 3) call AVMATCH() to compare string, different commands do different handles
+ */
+static int HandleInvoke(RTMP *r, const char *body, unsigned int nBodySize) {
     AMFObject obj;
     AVal method;
     double txn;
@@ -3125,8 +3145,12 @@ HandleInvoke(RTMP *r, const char *body, unsigned int nBodySize) {
     return ret;
 }
 
-int
-RTMP_FindFirstMatchingProperty(AMFObject *obj, const AVal *name,
+/*
+ * @brief search the first attribte match name in the AMF object obj
+ *
+ * @return TRUE: success / FALSE: fail
+ */
+int RTMP_FindFirstMatchingProperty(AMFObject *obj, const AVal *name,
         AMFObjectProperty *p) {
     int n;
     /* this is a small object search to locate the "duration" property */
@@ -3147,8 +3171,12 @@ RTMP_FindFirstMatchingProperty(AMFObject *obj, const AVal *name,
 }
 
 /* Like above, but only check if name is a prefix of property */
-int
-RTMP_FindPrefixProperty(AMFObject *obj, const AVal *name,
+/*
+ * @brief check name is AMF object obj's attribute name prefix or not
+ *
+ * @return TRUE: success / FALSE: fail
+ */
+int RTMP_FindPrefixProperty(AMFObject *obj, const AVal *name,
         AMFObjectProperty *p) {
     int n;
     for (n = 0; n < obj->o_num; n++) {
@@ -3255,7 +3283,7 @@ HandleMetadata(RTMP *r, char *body, unsigned int len) {
 }
 
 /*
- * @brief After received "play" command, server send "ChunkSize" message
+ * @brief After received "play" command, server send "ChunkSize" message, change chunk size(message type id: 0x01)
  */
 static void HandleChangeChunkSize(RTMP *r, const RTMPPacket *packet) {
     if (packet->m_nBodySize >= 4) {
@@ -3273,8 +3301,11 @@ static void
 HandleVideo(RTMP *r, const RTMPPacket *packet) {
 }
 
-static void
-HandleCtrl(RTMP *r, const RTMPPacket *packet) {
+/*
+ * @brief handle (UserControl) message (message type id: 0x04)
+ * user control message is sent from server.
+ */
+static void HandleCtrl(RTMP *r, const RTMPPacket *packet) {
     short nType = -1;
     unsigned int tmp;
     if (packet->m_body && packet->m_nBodySize >= 2)
@@ -3406,25 +3437,32 @@ HandleCtrl(RTMP *r, const RTMPPacket *packet) {
     }
 }
 
-static void
-HandleServerBW(RTMP *r, const RTMPPacket *packet) {
+/*
+ * @brief acknownledgement windows size(server) (message type id: 0x05)
+ */
+static void HandleServerBW(RTMP *r, const RTMPPacket *packet) {
     r->m_nServerBW = AMF_DecodeInt32(packet->m_body);
     RTMP_Log(RTMP_LOGDEBUG, "%s: server BW = %d", __FUNCTION__, r->m_nServerBW);
 }
 
-static void
-HandleClientBW(RTMP *r, const RTMPPacket *packet) {
+/*
+ * @brief the other end bandwith(client)
+ */
+static void HandleClientBW(RTMP *r, const RTMPPacket *packet) {
     r->m_nClientBW = AMF_DecodeInt32(packet->m_body);
-    if (packet->m_nBodySize > 4)
-        r->m_nClientBW2 = packet->m_body[4];
-    else
+    if (packet->m_nBodySize > 4) {
+        r->m_nClientBW2 = packet->m_body[4]; // limit type: hard(0), soft(1), dynamic(2)
+    } else {
         r->m_nClientBW2 = -1;
+    }
     RTMP_Log(RTMP_LOGDEBUG, "%s: client BW = %d %d", __FUNCTION__, r->m_nClientBW,
             r->m_nClientBW2);
 }
 
-static int
-DecodeInt32LE(const char *data) {
+/*
+ * @brief decode a 32 bit unsigned int with little endian
+ */
+static int DecodeInt32LE(const char *data) {
     unsigned char *c = (unsigned char *) data;
     unsigned int val;
 
@@ -3432,8 +3470,10 @@ DecodeInt32LE(const char *data) {
     return val;
 }
 
-static int
-EncodeInt32LE(char *output, int nVal) {
+/*
+ * @brief encode a 32 bit integer with little endian
+ */
+static int EncodeInt32LE(char *output, int nVal) {
     output[0] = nVal;
     nVal >>= 8;
     output[1] = nVal;
@@ -4200,8 +4240,10 @@ int RTMPSockBuf_Close(RTMPSockBuf *sb) {
 
 #define HEX2BIN(a)    (((a)&0x40)?((a)&0xf)+9:((a)&0xf))
 
-static void
-DecodeTEA(AVal *key, AVal *text) {
+/*
+ * @brief decode secret key encrypted with TEA
+ */
+static void DecodeTEA(AVal *key, AVal *text) {
     uint32_t *v, k[4] = {0}, u;
     uint32_t z, y, sum = 0, e, DELTA = 0x9e3779b9;
     int32_t p, q;
