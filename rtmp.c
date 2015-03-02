@@ -1075,6 +1075,7 @@ SocksNegotiate(RTMP *r) {
 /*
  * @brief After server received "createStream", send "_result" message to notify the status
  * of the client stream
+ * create NetStream
  */
 int RTMP_ConnectStream(RTMP *r, int seekTime) {
     RTMPPacket packet = {0};
@@ -1082,15 +1083,21 @@ int RTMP_ConnectStream(RTMP *r, int seekTime) {
     /* seekTime was already set by SetupStream / SetupURL.
    * This is only needed by ReconnectStream.
    */
-    if (seekTime > 0)
+    if (seekTime > 0) {
         r->Link.seekTime = seekTime;
+    }
 
     r->m_mediaChannel = 0;
 
+    // aren't playing, on RTMP connection, read message package from socket connection
+    // what is truly received is chunk, not message.
     while (!r->m_bPlaying && RTMP_IsConnected(r) && RTMP_ReadPacket(r, &packet)) {
+        // a message may be divided into many chunk, only when all chunks are read, then handle this message
         if (RTMPPacket_IsReady(&packet)) {
-            if (!packet.m_nBodySize)
+            if (!packet.m_nBodySize) {
                 continue;
+            }
+            // read a flv data package, continue to read next package
             if ((packet.m_packetType == RTMP_PACKET_TYPE_AUDIO) ||
                     (packet.m_packetType == RTMP_PACKET_TYPE_VIDEO) ||
                     (packet.m_packetType == RTMP_PACKET_TYPE_INFO)) {
@@ -1099,8 +1106,8 @@ int RTMP_ConnectStream(RTMP *r, int seekTime) {
                 continue;
             }
 
-            RTMP_ClientPacket(r, &packet);
-            RTMPPacket_Free(&packet);
+            RTMP_ClientPacket(r, &packet); // handle received data package
+            RTMPPacket_Free(&packet); // handle finished, delete the data
         }
     }
 
@@ -1345,8 +1352,10 @@ extern FILE *netstackdump;
 extern FILE *netstackdump_read;
 #endif
 
-static int
-ReadN(RTMP *r, char *buffer, int n) {
+/*
+ * @brief Read n byte data from HTTP or socket, store in buffer.
+ */
+static int ReadN(RTMP *r, char *buffer, int n) {
     int nOriginalSize = n;
     int avail;
     char *ptr;
@@ -3394,57 +3403,80 @@ EncodeInt32LE(char *output, int nVal) {
     return 4;
 }
 
-int
-RTMP_ReadPacket(RTMP *r, RTMPPacket *packet) {
-    uint8_t hbuf[RTMP_MAX_HEADER_SIZE] = {0};
-    char *header = (char *) hbuf;
-    int nSize, hSize, nToRead, nChunk;
+/*
+ * @brief read received message chunk, store in packet. Don't do anything to the message.
+ *
+ * chunk format: |basic header(1-3 bytes)| chunk msg header(0/3/7/11 bytes) | Extended Timestamp(0/4 byte) | chunk data |
+ *
+ * basic header can be divided into: |fmt (2 bytes)| cs id(3 <= id <= 65599) |
+ * RTMP protocol support 65597 kinds of stream, ID range is 3 ~ 65599, ID 0, 1, 2 are reserved.
+ * id = 0, means ID range 64 ~ 319 (second byte + 64)
+ * id = 1, means ID range 64 ~ 65599 (third byte * 256 + second byte + 64)
+ * id = 2, means low level protocol message
+ * There is no other bytes to mean stream id. 3 -- 63 means completed stream id
+ *
+ * A complete chunk msg header can be divided into: |timestamp(3 bytes)| msg length (3 bytes) | msg type id (1 byte, little-endian) | msg stream id (4 byte) |
+ */
+int RTMP_ReadPacket(RTMP *r, RTMPPacket *packet) {
+    uint8_t hbuf[RTMP_MAX_HEADER_SIZE] = {0}; // max Chunk header length is 3 + 11 + 4 = 18
+    char *header = (char *) hbuf; // header is pointed to socket received data
+    int nSize, hSize, nToRead, nChunk; // nSize is chunk message header length, hSize is chunk header length
     int didAlloc = FALSE;
     int extendedTimestamp;
 
     RTMP_Log(RTMP_LOGDEBUG2, "%s: fd=%d", __FUNCTION__, r->m_sb.sb_socket);
 
+    // Read 1 byte to hbuf[0]
     if (ReadN(r, (char *) hbuf, 1) == 0) {
         RTMP_Log(RTMP_LOGERROR, "%s, failed to read RTMP packet header", __FUNCTION__);
         return FALSE;
     }
 
-    packet->m_headerType = (hbuf[0] & 0xc0) >> 6;
-    packet->m_nChannel = (hbuf[0] & 0x3f);
+    packet->m_headerType = (hbuf[0] & 0xc0) >> 6; // chunk type fmt
+    packet->m_nChannel = (hbuf[0] & 0x3f); // chunk stream id (2 - 63)
     header++;
+    // the first byte of chunk stream id is 0, means chunk stream id is 2 byte, means id range is 64 - 319 (the second byte + 64)
     if (packet->m_nChannel == 0) {
+        // read next 1 byte to hbuf[1]
         if (ReadN(r, (char *) &hbuf[1], 1) != 1) {
             RTMP_Log(RTMP_LOGERROR, "%s, failed to read RTMP packet header 2nd byte",
                     __FUNCTION__);
             return FALSE;
         }
+        // chunk stream id = the second byte + 64 = hbuf[1] + 64
         packet->m_nChannel = hbuf[1];
         packet->m_nChannel += 64;
         header++;
-    }
-    else if (packet->m_nChannel == 1) {
+    } else if (packet->m_nChannel == 1) {
+        // The first byte of chunk stream id is 1, means chunk stream id is 3 bytes, means id range 64 - 65599(the third byte * 256 + the second byte + 64)
         int tmp;
+        // reand 2 bytes to hbuf[1] and hbuf[2]
         if (ReadN(r, (char *) &hbuf[1], 2) != 2) {
             RTMP_Log(RTMP_LOGERROR, "%s, failed to read RTMP packet header 3nd byte",
                     __FUNCTION__);
             return FALSE;
         }
+        // chunk stream id = third byte * 256 + second byte + 64
         tmp = (hbuf[2] << 8) + hbuf[1];
         packet->m_nChannel = tmp + 64;
         RTMP_Log(RTMP_LOGDEBUG, "%s, m_nChannel: %0x", __FUNCTION__, packet->m_nChannel);
         header += 2;
     }
 
+    // chunk message header(ChunkMsgHeader) has 4 types, sizes are: 11, 7, 3, 0, each value + 1 is the value of the array
+    // chunk header = BasicHeader(1-3 bytes) + ChunkMsgHeader + ExtendTimestamp(0 or 4 bytes)
     nSize = packetSize[packet->m_headerType];
 
     if (packet->m_nChannel >= r->m_channelsAllocatedIn) {
         int n = packet->m_nChannel + 10;
         int *timestamp = realloc(r->m_channelTimestamp, sizeof(int) * n);
         RTMPPacket **packets = realloc(r->m_vecChannelsIn, sizeof(RTMPPacket *) * n);
-        if (!timestamp)
+        if (!timestamp) {
             free(r->m_channelTimestamp);
-        if (!packets)
+        }
+        if (!packets) {
             free(r->m_vecChannelsIn);
+        }
         r->m_channelTimestamp = timestamp;
         r->m_vecChannelsIn = packets;
         if (!timestamp || !packets) {
@@ -3456,10 +3488,11 @@ RTMP_ReadPacket(RTMP *r, RTMPPacket *packet) {
         r->m_channelsAllocatedIn = n;
     }
 
-    if (nSize == RTMP_LARGE_HEADER_SIZE)    /* if we get a full header the timestamp is absolute */
+    // chunk type fmt is 0,
+    if (nSize == RTMP_LARGE_HEADER_SIZE) {
+        /* if we get a full header the timestamp is absolute */
         packet->m_hasAbsTimestamp = TRUE;
-
-    else if (nSize < RTMP_LARGE_HEADER_SIZE) {                /* using values from the last message of this channel */
+    } else if (nSize < RTMP_LARGE_HEADER_SIZE) {                /* using values from the last message of this channel */
         if (r->m_vecChannelsIn[packet->m_nChannel])
             memcpy(packet, r->m_vecChannelsIn[packet->m_nChannel],
                     sizeof(RTMPPacket));
@@ -4036,12 +4069,15 @@ CloseInternal(RTMP *r, int reconnect) {
 #endif
 }
 
-int
-RTMPSockBuf_Fill(RTMPSockBuf *sb) {
+/*
+ * @brief use recv() to receive data.
+ */
+int RTMPSockBuf_Fill(RTMPSockBuf *sb) {
     int nBytes;
 
-    if (!sb->sb_size)
+    if (!sb->sb_size) {
         sb->sb_start = sb->sb_buf;
+    }
 
     while (1) {
         nBytes = sizeof(sb->sb_buf) - 1 - sb->sb_size - (sb->sb_start - sb->sb_buf);
@@ -4061,8 +4097,9 @@ RTMPSockBuf_Fill(RTMPSockBuf *sb) {
             int sockerr = GetSockError();
             RTMP_Log(RTMP_LOGDEBUG, "%s, recv returned %d. GetSockError(): %d (%s)",
                     __FUNCTION__, nBytes, sockerr, strerror(sockerr));
-            if (sockerr == EINTR && !RTMP_ctrlC)
+            if (sockerr == EINTR && !RTMP_ctrlC) {
                 continue;
+            }
 
             if (sockerr == EWOULDBLOCK || sockerr == EAGAIN) {
                 sb->sb_timedout = TRUE;
