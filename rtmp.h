@@ -110,19 +110,16 @@ typedef struct RTMPChunk {
 } RTMPChunk;
 
 typedef struct RTMPPacket {
-    uint8_t m_headerType;
-    uint8_t m_packetType;
-    uint8_t m_hasAbsTimestamp;
-    /* timestamp absolute or relative? */
-    int m_nChannel;
-    uint32_t m_nTimeStamp;
-    /* timestamp */
-    int32_t m_nInfoField2;
-    /* last 4 bytes in a long header */
-    uint32_t m_nBodySize;
-    uint32_t m_nBytesRead;
+    uint8_t m_headerType; // ChunkMsgHeader type (4 kinds)
+    uint8_t m_packetType; // Message type ID (1 - 7 protocol control; 8, 9 audio/video; 10 and after used for AMF encode message)
+    uint8_t m_hasAbsTimestamp; /* timestamp absolute or relative? */
+    int m_nChannel; // chunk stream id(csid) (3 <= ID <= 65599)
+    uint32_t m_nTimeStamp; /* timestamp */
+    int32_t m_nInfoField2; /* last 4 bytes in a long header, message stream id */
+    uint32_t m_nBodySize; // message length
+    uint32_t m_nBytesRead; // This RTMP package has been read how many bytes
     RTMPChunk *m_chunk;
-    char *m_body;
+    char *m_body; // store actually message data, video tag, audio tag, metadata tag
 } RTMPPacket;
 
 typedef struct RTMPSockBuf {

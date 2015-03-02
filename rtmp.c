@@ -1450,8 +1450,16 @@ static int ReadN(RTMP *r, char *buffer, int n) {
     return nOriginalSize - n;
 }
 
-static int
-WriteN(RTMP *r, const char *buffer, int n) {
+/*
+ * @brief send datagram, call HTTP_Post or RTMPSockBuf_Send to send data
+ *
+ * @param[in] r: a RTMP connection
+ * @param[in] buffer: data to be sent
+ * @param[in] n: data length to be sent
+ *
+ * @return true: success / false: fail
+ */
+static int WriteN(RTMP *r, const char *buffer, int n) {
     const char *ptr = buffer;
 #ifdef CRYPTO
     char *encrypted = 0;
@@ -3782,8 +3790,15 @@ RTMP_SendChunk(RTMP *r, RTMPChunk *chunk) {
     return wrote;
 }
 
-int
-RTMP_SendPacket(RTMP *r, RTMPPacket *packet, int queue) {
+/*
+ * @brief send RTMP package divided into chunks according to the protocol
+ * @param[in] r: RTMP context
+ * @param[in] packet: RTMP package, contains payload data to send
+ * @param[in] queue: remote method queue, used only when packet type is invoke.
+ *
+ * @return 1: success / 0: fail
+ */
+int RTMP_SendPacket(RTMP *r, RTMPPacket *packet, int queue) {
     const RTMPPacket *prevPacket;
     uint32_t last = 0;
     int nSize;
@@ -4143,8 +4158,10 @@ int RTMPSockBuf_Fill(RTMPSockBuf *sb) {
     return nBytes;
 }
 
-int
-RTMPSockBuf_Send(RTMPSockBuf *sb, const char *buf, int len) {
+/*
+ * @brief Socket send, return byte sent
+ */
+int RTMPSockBuf_Send(RTMPSockBuf *sb, const char *buf, int len) {
     int rc;
 
 #ifdef _DEBUG
@@ -4163,8 +4180,10 @@ RTMPSockBuf_Send(RTMPSockBuf *sb, const char *buf, int len) {
     return rc;
 }
 
-int
-RTMPSockBuf_Close(RTMPSockBuf *sb) {
+/*
+ * @brief close socket
+ */
+int RTMPSockBuf_Close(RTMPSockBuf *sb) {
 #if defined(CRYPTO) && !defined(NO_SSL)
     if (sb->sb_ssl) {
         TLS_shutdown(sb->sb_ssl);
@@ -4243,8 +4262,13 @@ DecodeTEA(AVal *key, AVal *text) {
     free(out);
 }
 
-static int
-HTTP_Post(RTMP *r, RTMPTCmd cmd, const char *buf, int len) {
+/*
+ * @brief add http connection message before buf to be sent
+ *
+ *
+ * @return original buf be sent
+ */
+static int HTTP_Post(RTMP *r, RTMPTCmd cmd, const char *buf, int len) {
     char hbuf[512];
     int hlen = snprintf(hbuf, sizeof(hbuf), "POST /%s%s/%d HTTP/1.1\r\n"
                     "Host: %.*s:%d\r\n"
